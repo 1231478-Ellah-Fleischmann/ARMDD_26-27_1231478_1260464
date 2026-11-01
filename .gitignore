@@ -1,0 +1,23 @@
+# Visual Studio / SSIS
+.vs/
+bin/
+obj/
+*.user
+*.suo
+*.dtproj.user
+*.database
+
+# Power BI (formato .pbip)
+**/.pbi/localSettings.json
+**/.pbi/cache.abf
+
+# Backups e dados (confidenciais / volumosos)
+*.bak
+*.mdf
+*.ldf
+*.zip
+
+# Ficheiros de sistema
+Thumbs.db
+.DS_Store
+~$*
