@@ -453,6 +453,8 @@ Para além da chave primária, são criados índices sobre NumeroFatura, utiliza
 
 Os valores monetários mantêm a precisão da fonte. Esta opção é particularmente importante no cálculo do frete repartido, evitando a perda de casas decimais durante as operações.
 
+Além da chave primária, existe um índice na coluna NumeroFatura, utilizado para apagar e reinserir as linhas das faturas alteradas.
+
 ### 5.3 DimData
 
 A dimensão DimData é gerada para o período entre 2020-01-01 e 2035-12-31 (Tabela 5). No atributo AnoEstacao, o mês de dezembro é associado ao inverno do ano seguinte.
