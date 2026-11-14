@@ -234,3 +234,159 @@ Cada valor monetário vai ser guardado na moeda original da fatura e em euros, j
 
 4.5 Matriz de barramento
 A matriz de barramento mostra que dimensões cada processo do negócio da empresa usa (Tabela X). Um data mart de compras usaria a DimData (data do documento e data de pagamento), a DimProduto, a DimFornecedor e a DimEmpregado, e um data mart de stocks usaria a DimData e a DimProduto. Estas quatro dimensões são, por consequencia, dimensões conformadas, ou seja, partilhadas por vários processos com o mesmo significado, e assim podem ser reaproveitadas. Esta é a abordagem bottom-up de Kimball: o armazém de dados cresce um data mart de cada vez, e os data marts ligam-se entre si pelas dimensões que partilham. A DimCliente e a DimMoeda só fazem sentido nas vendas, porque as compras e os stocks não têm cliente nem moeda na fonte.
+
+5. Modelo dimensional
+Neste capítulo apresentaremos as tabelas do modelo, com os atributos, os tipos de dados, as chaves e as hierarquias que pensamos em implementar no nosso projeto. Os tipos das colunas que vêm da fonte foram lidos diretamente da base de dados MoreRhythm.
+
+5.1 Visão geral
+O modelo é um esquema em estrela, como já dito anteriormente, com a FactVendas ligada a seis dimensões. A DimData é usada duas vezes, uma para a data da fatura e outra para a data de pagamento (Figura 2).
+
+Figura 2 - Esquema em estrela do Data Mart
+
+Cada dimensão tem uma chave substituta, ou seja, um número gerado automaticamente pelo Data Mart (int IDENTITY), independente do código da fonte. A exceção é a DimData, cuja chave é a própria data no formato AAAA-MM-DD (por exemplo, 20250131). Cada dimensão guarda também o código da fonte (que é a chave natural), que o ETL usa para encontrar a linha certa da dimensão, e tem um registo "Desconhecido" com a chave -1, que é o padrão na industria.
+
+As dimensões cliente, produto, fornecedor e empregado guardam o histórico das alterações em versões (SCD tipo 2). Para isso têm três colunas: DataInicio, DataFim e Atual. A primeira versão começa em 1900-01-01 e a versão atual termina em 9999-12-31. Cada venda fica ligada à versão que era válida na data da fatura. A forma como cada atributo é tratado estará escrito mais a frente. Os nomes das tabelas e das colunas estão em português, sem acentos, com cada palavra começada por maiúscula (por exemplo, DataFaturaKey).
+
+5.2 FactVendas
+Cada linha da FactVendas é uma linha de fatura (Tabela 3).
+
+Tabela 3 - Colunas da FactVendas
+Coluna  Tipo    Nulo    Descrição       Origem / regra
+VendaKey        bigint IDENTITY Não     Chave da linha de factos        Gerada. Muda quando a fatura é reprocessada
+DataFaturaKey   int     Não     Liga à DimData: data da fatura  invoices.invoice_date -> AAAAMMDD
+DataPagamentoKey        int     Não     Liga à DimData: data de pagamento       invoices.payment_date -> AAAAMMDD; -1 se a fatura ainda não foi paga. Quando o pagamento é registado na fonte, a data de alteração da fatura muda e a fatura é reprocessada
+ClienteKey      int     Não     Liga à DimCliente       invoices.customer -> grupo de duplicados -> versão válida na data da fatura
+ProdutoKey      int     Não     Liga à DimProduto       invoices_lines.product -> versão válida na data da fatura
+FornecedorKey   int     Não     Liga à DimFornecedor    products.supplyer do produto da linha -> versão válida na data da fatura
+EmpregadoKey    int     Não     Liga à DimEmpregado     invoices.employee -> versão válida na data da fatura
+MoedaKey        int     Não     Liga à DimMoeda invoices.currency (EURO -> EUR)
+NumeroFatura    varchar(25)     Não     Número da fatura (dimensão degenerada)  invoices.invoice_stamp_id completo, sem espaços à direita
+Quantidade      numeric(14,4)   Não     Quantidade vendida      invoices_lines.quantity, sem o sinal negativo quando não bate com o line_total (P1)
+PrecoUnitario   numeric(19,6)   Não     Preço unitário na moeda original (não aditivo)  invoices_lines.unit_price, sem o sinal negativo (P1)
+ValorProdutos   numeric(19,6)   Não     Valor dos produtos sem IVA e sem frete  invoices_lines.line_total
+ValorIVA        numeric(19,6)   Não     IVA da linha    invoices_lines.line_vat
+ValorFrete      numeric(19,6)   Não     Frete repartido pela linha      (total_for_vat - products_total) x line_total / soma do line_total da fatura. A última linha de cada fatura fica com o resto do arredondamento
+ValorSemIVA     numeric(19,6)   Não     Valor sem IVA, com frete        ValorProdutos + ValorFrete
+ValorComIVA     numeric(19,6)   Não     Valor com IVA, com frete        ValorProdutos + ValorFrete + ValorIVA
+PrecoUnitarioEUR        numeric(19,6)   Não     Preço unitário em euros PrecoUnitario / TaxaCambio
+ValorProdutosEUR        numeric(19,6)   Não     Valor dos produtos em euros     ValorProdutos / TaxaCambio
+ValorIVAEUR     numeric(19,6)   Não     IVA em euros    ValorIVA / TaxaCambio
+ValorFreteEUR   numeric(19,6)   Não     Frete em euros  ValorFrete / TaxaCambio
+ValorSemIVAEUR  numeric(19,6)   Não     Valor sem IVA em euros  ValorSemIVA / TaxaCambio
+ValorComIVAEUR  numeric(19,6)   Não     Valor com IVA em euros  ValorComIVA / TaxaCambio
+TaxaCambio      numeric(12,6)   Não     Unidades da moeda por 1 euro, na data da fatura CSV do BCE; taxa do dia útil anterior quando não há cotação; 1 para o euro
+
+Além da chave primária, há um índice no NumeroFatura, usado para apagar e reinserir as linhas das faturas alteradas. Os valores mantêm as 6 casas decimais da fonte. Como o frete repartido pode ter mais casas decimais, a última linha de cada fatura fica com o resto do arredondamento, para que a soma do frete das linhas seja sempre igual ao frete da fatura.
+
+5.3 DimData
+Gerada de 2020-01-01 a 2035-12-31 (Tabela 4). Na AnoEstacao, dezembro conta para o inverno do ano seguinte. As hierarquias são Ano -> Semestre -> Trimestre -> Mês -> Dia, Ano -> Quadrimestre -> Mês -> Dia, AnoSemanaISO -> SemanaISO -> Dia e AnoEstacao -> Estação -> Dia.
+
+Tabela 4 - Colunas da DimData
+Coluna  Tipo    Descrição       Regra
+DataKey int     Chave primária, AAAAMMDD        Ano x 10000 + Mês x 100 + Dia
+Data    date    Data
+Dia     tinyint Dia do mês (1-31)
+DiaSemana       tinyint Dia da semana, 1 = segunda … 7 = domingo        ISO 8601, não depende da configuração do servidor
+NomeDiaSemana   varchar(15)     "Segunda-feira" … "Domingo"
+FimDeSemana     bit     1 ao sábado e domingo   Análise 10
+UltimoDiaMes    bit     1 no último dia do mês  Data = EOMONTH(Data). Análise 5
+SemanaISO       tinyint Semana ISO 8601 (segunda a domingo; semana 1 contém 4 de janeiro)       DATEPART(ISO_WEEK, Data). Análise 6
+AnoSemanaISO    smallint        Ano a que pertence a semana ISO Ano da quinta-feira dessa semana
+Mes     tinyint Mês (1-12)
+NomeMes varchar(12)     "Janeiro" … "Dezembro"
+Trimestre       tinyint 1-4     Análises 3, 9, 10
+Quadrimestre    tinyint 1-3 (jan-abr, mai-ago, set-dez) Análise 7
+Semestre        tinyint 1-2     Análise 1
+Ano     smallint        Ano civil
+Estacao varchar(12)     Inverno (dez-fev), Primavera (mar-mai), Verão (jun-ago), Outono (set-nov)       Meteorológica. Análise 8
+AnoEstacao      smallint        Ano da estação: dezembro conta para o i 15/12/2025 -> Inverno 2026, junto com jan e fev de 2026
+
+5.4 DimCliente
+Uma linha por versão de cada cliente, já sem duplicados (Tabela 5). As -> Cidade -> Localidade -> Cliente, Tipo de cliente -> Cliente (análise7) e Segmento -> Cliente. A zona é o território comercial da fonte e não uma divisão geográfica (é o que achamos, sendo necessário verificar por exato), por isso a mesma cidade pode estar em zonas diferentes (Amadora está em Sul e em Centro).
+
+Tabela 5 - Colunas da DimCliente
+Coluna	Tipo	Descrição	Origem / regra
+ClienteKey	int IDENTITY	Chave substituta	Gerada
+ClienteID	bigint	Chave natural: menor número do grupo de duplicados	customers.number, através da AUX_CustomerMap
+Nome	varchar(55)	Nome do cliente	customers.name
+NIF	varchar(20)	NIF	customers.taxpayer_number
+CodigoPostal	varchar(12)	Código postal (só o código, sem a localidade)	customers.zip_code; "Desconhecido" se em falta
+Cidade	varchar(45)	Localidade postal	Texto do zip_code depois do código; exceções para moradas estrangeiras; "Desconhecido" se em falta
+Localidade	varchar(43)	Bairro / lugar	customers.clity; "Desconhecido" se em falta
+Zona	varchar(50)	Norte, Centro, Sul, Ilhas, Espanha	zones.zone; "Desconhecido" se em falta
+Pais	varchar(50)	Portugal, Espanha, …	Derivado da zona e do código postal
+TipoCliente	varchar(20)	Cliente Final, Revendedor, Funcionário	customers.type. Análise 7
+Segmento	varchar(25)	Alto, Médio, Baixo	customers.segment
+DataInicio	date	Início de validade da versão	Histórico em versões (SCD tipo 2)
+DataFim	date	Fim de validade da versão	Histórico em versões (SCD tipo 2)
+Atual	bit	1 na versão atual	Histórico em versões (SCD tipo 2)
+
+5.5 DimProduto
+Uma linha por versão de cada produto (Tabela 6), com as hierarquias Classificação -> Família -> Produto e Categoria -> Produto.
+
+Tabela 6 - Colunas da DimProduto
+Coluna	Tipo	Descrição	Origem / regra
+ProdutoKey	int IDENTITY	Chave substituta	Gerada
+ProdutoID	varchar(18)	Chave natural: referência do produto	products.reference, sem espaços à direita
+Designacao	varchar(60)	Designação	products.designation; "Desconhecido" se vazia
+Familia	varchar(60)	Nome curto da família	families.name, exceto nas 4 famílias cujo nome é uma descrição longa (Aerofones, Cordofones, Idiofones, Membranofones), onde se usa families.reference; "Desconhecido" se em falta
+DescricaoFamilia	varchar(60)	Nome completo da família	families.name; "Desconhecido" se em falta
+ClassificacaoFamilia	varchar(20)	Instrumentos, Acessórios, Pilhas, Aparelhos, …	products.classification, e não families.classification, que está vazia em 8 das 17 famílias. Na amostra é constante dentro de cada família. "Desconhecido" se vazia
+Categoria	varchar(35)	Categoria	categories via products.category; "Desconhecido" se em falta
+TaxaIVA	numeric(2,0)	Taxa de IVA em % (23 = 23%)	products.vat_rate; nulo se em falta
+PrecoVendaTabela	numeric(19,6)	Preço de venda de tabela	products.current_sell_price / 1 000 000; opcional
+CustoTabela	numeric(19,6)	Último preço de custo	products.last_cost_price / 1 000 000; opcional
+DataInicio	date	Início de validade da versão	SCD 2
+DataFim	date	Fim de validade da versão	SCD 2
+Atual	bit	1 na versão atual	SCD 2
+
+
+5.6 DimFornecedor
+Uma linha por versão de cada fornecedor (Tabela 7), com as hierarquias País -> Zona -> Cidade -> Fornecedor (análise 10) e Tipo de fornecedor -> Fornecedor.
+
+Tabela 7 - Colunas da DimFornecedor
+Coluna	Tipo	Descrição	Origem / regra
+FornecedorKey	int IDENTITY	Chave substituta	Gerada
+FornecedorID	bigint	Chave natural	suplliers.number
+Nome	varchar(55)	Nome	suplliers.name
+NIF	varchar(20)	NIF	suplliers.taxpayer_number
+CodigoPostal	varchar(10)	Código postal (só o código)	suplliers.zip_code
+Cidade	varchar(45)	Localidade postal	Texto do zip_code depois do código; exceção para o fornecedor 10
+Localidade	varchar(43)	Bairro / lugar	suplliers.city
+Zona	varchar(50)	Zona (território comercial, ver nota na DimCliente)	zones.zone
+Pais	nvarchar(50)	País	Derivado da zona, de nationality e do código postal
+TipoFornecedor	varchar(20)	Material, Serviços	suplliers.type; opcional
+DataInicio	date	Início de validade da versão	SCD 2
+DataFim	date	Fim de validade da versão	SCD 2
+Atual	bit	1 na versão atual	SCD 2
+
+
+5.7 DimEmpregado
+Uma linha por versão de cada empregado (Tabela 8), com as hierarquias Chefe -> Empregado, Grupo -> Empregado e Departamento -> Empregado. Os 2 empregados sem chefe ficam com "Sem chefe".
+
+Tabela 8 - Colunas da DimEmpregado
+Coluna	Tipo	Descrição	Origem / regra
+EmpregadoKey	int IDENTITY	Chave substituta	Gerada
+EmpregadoID	int	Chave natural	employees.number
+Nome	varchar(30)	Nome	employees.name
+Grupo	varchar(20)	Administrador, Vendedor, Administrativo	employees.group
+Departamento	varchar(20)	Administrativo, Armazenagem, Direcção	employees.departament
+Chefe	varchar(30)	Nome do chefe; "Sem chefe" nos 2 empregados sem chefe	employees.name do empregado indicado em employees.chief
+DataInicio	date	Início de validade da versão	SCD 2
+DataFim	date	Fim de validade da versão	SCD 2
+Atual	bit	1 na versão atual	SCD 2
+
+
+5.8 DimMoeda
+Uma linha por moeda, sem histórico (Tabela 9).
+
+Tabela 9 - Colunas da DimMoeda
+Coluna	Tipo	Descrição	Origem / regra
+MoedaKey	int IDENTITY	Chave substituta	Gerada
+CodigoISO	char(3)	Código ISO 4217 (chave natural)	invoices.currency normalizado (EURO -> EUR)
+Nome	nvarchar(50)	Euro, Libra esterlina, …	Tabela de moedas na staging
+Simbolo	nvarchar(5)	€, £, …	Tabela de moedas na staging
+
+
+5.9 Tipos de dados
+O ClienteID e o FornecedorID são bigint, porque na fonte são numeric(10,0), que vai até 9 999 999 999 e não cabe num int. O EmpregadoID cabe num int. As colunas char passam a varchar com o mesmo tamanho, porque ficam sem os espaços à direita, e o código postal passa a varchar(10), porque guarda só o código. O resto mantém o tipo da fonte.
