@@ -72,9 +72,9 @@ Nesta primeira fase, o trabalho centra-se na análise e no desenho da solução,
 
 ### 1.1 Contexto e objetivos
 
-A More Rhythm, SA, apresentada anteriormente, é uma empresa de referência a nível nacional na distribuição e comercialização de instrumentos musicais, com sede no Porto. A sua atividade comercial abrange todo o território nacional e, pontualmente, Espanha. O sistema informático da empresa dá suporte às principais atividades operacionais, nomeadamente às vendas e faturação, às compras e à gestão de stocks.
+A atividade comercial da More Rhythm abrange todo o território nacional e, pontualmente, Espanha. O sistema informático da empresa dá suporte às principais atividades operacionais, nomeadamente às vendas e faturação, às compras e à gestão de stocks.
 
-A administração da empresa pretende implementar um Data Mart que permita analisar, de forma histórica, as vendas realizadas aos seus clientes. Para garantir flexibilidade nas análises, o Data Mart deverá permitir a consultaa ao nível de granularidade mais elementar, assim como indicado no enunciado do projeto. 
+A administração da empresa pretende implementar um Data Mart que permita analisar, de forma histórica, as vendas realizadas aos seus clientes. Para garantir flexibilidade nas análises, o Data Mart deverá permitir a consulta ao nível de granularidade mais elementar, assim como indicado no enunciado do projeto. 
 
 Além disso, a solução deverá acompanhar a evolução prevista da empresa, que pretende expandir a sua atividade para outros países da União Europeia e abrir a sua primeira sucursal no estrangeiro, no Reino Unido.
 
@@ -84,9 +84,9 @@ Os dados do sistema operacional, em conjunto com os requisitos definidos pela em
 
 - **Registos duplicados**. O processo de limpeza dos dados deverá identificar e eliminar situações de duplicação, incluindo registos exatamente iguais e registos com pequenas diferenças. Um exemplo identificado no enunciado é o dos clientes, uma vez que o mesmo cliente pode estar registado com identificadores diferentes, sem que os respetivos registos sejam necessariamente iguais.
 - **Qualidade dos dados**. Podem existir valores em falta em atributos de preenchimento obrigatório, valores que não respeitam os domínios definidos ou violações das restrições de integridade. Os registos cuja correção não possa ser realizada de forma automática não deverão ser carregados no Data Mart, devendo ser armazenados em tabelas de erros na *staging area*.
-- **Custos de expedição**. Atualmente, estes custos estão associados à fatura e não às respetivas linhas ou produtos, o que representa um desafio na sua distri buição e análise ao nível de detalhe pretendido.
-- **Várias moedas**. Atualmente, todas as vendas são faturadas em euros. No entanto, a fatura expansão para o Reino Unido implicará a utilização de outra moeda. Assim, para permitir a comparação e aálise de vendas realizadas em diferentes moedas, será necessário uniformizar os valores através da conversão para euros.
-- **Carga incremental**. O sistema operacional regista a data e a hora de inserção e de alteração de cada registo. Esta informação deverá ser utilizada para implementar um processo de carga incremental das dimensões e dos factos, garantindo que, em cada execução, apenas são carregados os novos registos e atualizados aqueles que sofretam alterações.
+- **Custos de expedição**. Atualmente, estes custos estão associados à fatura e não às respetivas linhas ou produtos, o que representa um desafio na sua distribuição e análise ao nível de detalhe pretendido.
+- **Várias moedas**. Atualmente, todas as vendas são faturadas em euros. No entanto, a futura expansão para o Reino Unido implicará a utilização de outra moeda. Assim, para permitir a comparação e análise de vendas realizadas em diferentes moedas, será necessário uniformizar os valores através da conversão para euros.
+- **Carga incremental**. O sistema operacional regista a data e a hora de inserção e de alteração de cada registo. Esta informação deverá ser utilizada para implementar um processo de carga incremental das dimensões e dos factos, garantindo que, em cada execução, apenas são carregados os novos registos e atualizados aqueles que sofreram alterações.
 - **Volume e eficiência**. Embora a amostra de dados disponibilizada seja reduzida, representa um cenário real em que o volume de registos será consideravelmente superior. Por esse motivo, os processos de ETL deverão ser concebidos de forma a garantir a maior eficiência possível, mesmo perante grandes volumes de dados.
 - **Parametrização**. O projeto de Integration Services não deverá utilizar caminhos absolutos. Todos os caminhos, nomes dos servidores e nomes das bases de dados deverão ser definidos num ficheiro de parametrizações, permitindo adaptar a configuração do projeto a diferentes ambientes sem necessidade de alterar os processos de ETL.
 
@@ -94,22 +94,20 @@ Os dados do sistema operacional, em conjunto com os requisitos definidos pela em
 
 A fonte dos dados utilizada é a base de dados operacional MoreRhythm, desenvolvida em Microsoft SQL Server 2025 e disponibilizada como uma amostra dos dados reais (ficheiros MoreRhythm.mdf e MoreRhythm_log.ldf). 
 
-A base de dados e constituída por 12 tabelas, que abrangem três processos de negócio: vendas (*invoices* e *invoices_lines*), compras (*purchases* e *purchases_lines*) e movimentos de stock (*stocks_movements*). As restantes sete tabelas contêm os dados mestre relativos a clientes, fornecedores, funcionários, produtos, famílias, categorias e zonas. 
+A base de dados é constituída por 12 tabelas, que abrangem três processos de negócio: vendas (*invoices* e *invoices_lines*), compras (*purchases* e *purchases_lines*) e movimentos de stock (*stocks_movements*). As restantes sete tabelas contêm os dados mestre relativos a clientes, fornecedores, funcionários, produtos, famílias, categorias e zonas. 
 
 A amostra disponibilizada inclui 37 faturas, correspondentes a um total de 93 linhas, emitidas entre 31 de janeiro e 1 de maio de 2025.
 
-Antes de avançar com o desenho do Data Mart, foi realizado um processo de *data profiling* sobre a amostra. Esta análise permitiu compreender melhor a estrutura dos dados, identificar algumas regras de negócio refletidas na informação e detetar problemas de qualidade que terão de ser tratados ao longo do projeto. Estes problemas serão apresentados com maior detalhe capítulo 3.
-
 ### 1.4 Metodologia e ferramentas
 
-O desenho do Data Mart seguirá a metodologia de Kimball, conforme definido no enunciado do proejto. A análise dimensional será desenvolvida de acordo com os quatro passos desta metodologia: selecionar o processo de negócio, declarar o grão, identificar as dimensões e identificar os factos. As decisões tomadas ao longo da construção do modelo dimensional serão devidamente justificadas nas respetivas secções deste relatório.
+O desenho do Data Mart seguirá a metodologia de Kimball, conforme definido no enunciado do projeto. A análise dimensional será desenvolvida de acordo com os quatro passos desta metodologia: selecionar o processo de negócio, declarar o grão, identificar as dimensões e identificar os factos. As decisões tomadas ao longo da construção do modelo dimensional serão devidamente justificadas nas respetivas secções deste relatório.
 
 Para o desenvolvimento do projeto, serão utilizadas as seguintes ferramentas:
 
 - **Microsoft SQL Server**: utilizado para alojar a base de dados fonte, a *staging area* e o Data Mart, sendo que estas duas últimas estruturas ficarão alojadas no mesmo servidor.
 - **SQL Server Integration Services (SSIS)**: integrado num projeto de Integration Services Project desenvolvido no Visual Studio, será utilizado para implementar os processos de ETL.
 - **Power BI**: utilizado para desenvolver as 20 análises multidimensionais previstas para o projeto, das quais 10 foram definidas pela gestão da empresa e as restantes 10 serão propostas pelo grupo. Estas análises terão diferentes níveis de complexidade e irão explorar as hierarquias definidas no modelo dimensional.
-- **GitHub**: utilizado para gerir e partilhar o trabalho desenvolvido pelas dois elementos do grupo, através do repositório ARMDD_26-27_1231478_1260464, onde serão disponibilizados a documentação e o projeto SSIS.
+- **GitHub**: utilizado para gerir e partilhar o trabalho desenvolvido pelos dois elementos do grupo, através do repositório ARMDD_26-27_1231478_1260464, onde serão disponibilizados a documentação e o projeto SSIS.
 
 ### 1.5 Estrutura do relatório
 
@@ -119,53 +117,46 @@ O relatório encontra-se organizado em oito capítulos, cada um dedicado a uma c
 - **Capítulo 3**: caracteriza a base de dados de origem e descreve os resultados obtidos através do processo de *data profiling*.
 - **Capítulo 4**: aborda a análise dimensional, seguindo os quatro passos da metodologia de Kimball.
 - **Capítulo 5**: descreve o modelo dimensional, incluindo os atributos e respetivos tipos de dados da tabela de factos e de cada dimensão.
-- **Capítulo 6**: define as estruturas de dados da *staging area*, nomeadamente as tabelas e os fihceiros utilizados.
-- **Capítulo 7**: apresenta os mapeamentos de dados entre a fonte e a *staging area*, bem como entre esta última e o Data Mart. Inclui ainda a estratégia de *Slowly Changin Dimensions* (SCD) e as transformações e operações de limpeza aplicadas a cada atributo.
+- **Capítulo 6**: define as estruturas de dados da *staging area*, nomeadamente as tabelas e os ficheiros utilizados.
+- **Capítulo 7**: descreve os mapeamentos de dados da fonte para a staging area e da staging area para o Data Mart, incluindo a estratégia de *Slowly Changing Dimension* (SCD) e as transformações e limpezas de cada atributo das dimensões e de cada coluna da tabela de factos.
 - **Capítulo 8** encerra o relatório com as conclusões do trabalho, as limitações identificadas e as possíveis melhorias futuras.
 
 ## 2. Arquitetura do armazém de dados
 
-A arquitetura do armazém de dados está organizada em quatro camadas: fontes de dados,*staging area*, Data Mart e camada de apresentação. A transferência de dados entre estas camadas é relizada através de processos de ETL, desenvolvidos em SQL Server Integrations Services (SSIS). Todas as bases de dados utilizadas no projeto, estão alojadas em Microsoft SQL Server 2025. ![Figura 1](img/fig1_arquitetura.png)
-Figura 1 – Arquitetura do armazém de dados da More Rhythm
+A arquitetura do armazém de dados está organizada em quatro camadas: fontes de dados,*staging area*, Data Mart e camada de apresentação. A transferência de dados entre estas camadas é realizada através de processos de ETL, desenvolvidos em SQL Server Integration Services (SSIS). Todas as bases de dados utilizadas no projeto estão alojadas em Microsoft SQL Server 2025. 
+
+![Figura 1](img/fig1_arquitetura.png)
+*Figura 1 – Arquitetura do armazém de dados da More Rhythm*
 
 ### 2.1 Fontes de dados
 
 A principal fonte de dados é a base de dados operacional MoreRhythm. Das suas 12 tabelas são utilizadas apenas as 9 relacionadas com o processo de vendas (*invoices*, *invoices_lines*, *customers*, *employees*, *products*, *families*, *categories*, *suplliers* e *zones*). As tabelas relativas às compras e aos movimentos de stock ficam fora do âmbito deste projeto, uma vez que correspondem a outros processos de negócio que não serão realizados nesta fase.
 
-Uma vez que a base de dados operacional não contém taxas de câmbio e que o euro será utilizado como moeda de referência para as análises, foi necessário recorrer a uma fonte externa. Para esse efeito, foram utilizadas as taxas de câmbio disponibiliadas pelo Banco Central Europeu (BCE), obtidas a 2 de novembro de 2026, através do site https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.GBP.EUR.SP00.A. 
+Uma vez que a base de dados operacional não contém taxas de câmbio e que o euro será utilizado como moeda de referência para as análises, foi necessário recorrer a uma fonte externa. Para esse efeito, foram utilizadas as taxas de câmbio disponibilizadas pelo Banco Central Europeu (BCE), obtidas a 2 de novembro de 2026, através do site https://data.ecb.europa.eu/data/datasets/EXR/EXR.D.GBP.EUR.SP00.A. 
 
-Foi descarregada a série de conversão diária da libra esterlina (GBP) para euro (EUR), sendo os dados guardados no fihciero ECB Data EUR GBP.csv (BD\ECB Data EUR GBP.csv). Este ficheiro contém a data, a respetiva representação por extenso e a taxa de câmbio. A taxa indica quantas libras correspondem a um euro, pelo que, para converter um valor de libras para euros, é necessário dividi-lo pela taxa de câmbio correspondente à data da fatura. No caso do euro, a taxada de conversão é sempre igual a 1, pelo que não é necessário incluí-lo no ficheiro.
+Foi descarregada a série de conversão diária da libra esterlina (GBP) para euro (EUR), sendo os dados guardados no ficheiro ECB Data EUR GBP.csv (BD\ECB Data EUR GBP.csv). Este ficheiro contém a data, a respetiva representação por extenso e a taxa de câmbio. A taxa indica quantas libras correspondem a um euro, pelo que, para converter um valor de libras para euros, é necessário dividi-lo pela taxa de câmbio correspondente à data da fatura. No caso do euro, a taxa de conversão é sempre igual a 1, pelo que não é necessário incluí-lo no ficheiro.
 
-Uma vez que o BCE apenas disponibiliza taxas de câmbio para os dias úteis, nos fins de semana e feriados será utilizada a taxa de câmbio do último dia últil anterior. As observações, correspondentes a feriados, nomeadamente os registos existentes até 2012, são ignoradas.
+Uma vez que o BCE apenas disponibiliza taxas de câmbio para os dias úteis, nos fins de semana e feriados será utilizada a taxa de câmbio do último dia útil anterior. As observações sem valor, correspondentes a feriados até 2012, são ignoradas.
 
-O intervalor de datas abrangido contempla as datas das faturas e dos respetivos pagamentos, bem como alguns anos futuros, de forma a permitir a utilização da dimensão temporal em análises posteriores.
-
-Os ficheiros externos utilizados no projeto ficam armazenados na pasta Files do projeto, cuja a localização é apresentada na secção 2.7.
+O ficheiro do BCE fica armazenado na pasta BD do projeto, cuja localização é apresentada na secção 2.7.
 
 ### 2.2 Staging area
 
-A *staging area* corresponde à base de dados MoreRhythm_SA, alojada no mesmo servidor que o Data Mart. Esta organização permite que o sistema operacional seja consultado apenas uma vez por execução, ficando todo o tratamento dos dados a cargo da *staging area*. A sua estrutura está dividida em duas camadas de dados e dois grupos de tabelas de apoio.
+A *staging area* corresponde à base de dados MoreRhythm_SA, alojada no mesmo servidor que o Data Mart. Esta organização permite que o sistema operacional seja consultado apenas uma vez por execução, ficando todo o tratamento dos dados a cargo da *staging area*.
 
-A primeira camada (E_) recebe os dados diretamente da fonte, mantendo os tipos de dados e as colunas de auditoria originais. A segunda camada (T_) armazena os dados após os processos de limpeza, deduplicação e integração, ficando preparados para serem carregados no Data Mart.
+As tabelas estão organizadas em três grupos:
 
-As duas camadas contêm apenas os registos correspondentes à carga incremental de cada execução, sendo esvaziadas no início de cada processo de ETL. Por outro lado, as tabelas de erros (ERR_) armazenam os registos cuja correção não é possível realizar automaticamente, juntamente com o respetivo motivo e a data da execução. Ao contrário das duas primeiras camadas, estas tabelas mantêm os erros acumulados ao longo de todas as execuções.
+- **Extração (E_)**: recebem os dados diretamente da fonte, mantendo os tipos de dados e as colunas de auditoria originais.
+- **Transformação (T_)**: armazenam os dados após a limpeza, a deduplicação e a integração, prontos para serem carregados no Data Mart.
+- **Persistentes**: guardam a informação que tem de ser mantida entre execuções, nomeadamente a data da última extração de cada tabela (ETL_Control), os mapeamentos de clientes duplicados e de moedas (MAP_Cliente e MAP_Moeda), os registos rejeitados (ERR_Clientes e ERR_Fornecedores) e as correções feitas aos valores das faturas (LOG_DiferencasFatura).
 
-Esta separação permite comparar os dados originais com os dados após o tratamento, facilitando a identificação das alterações efetuadas e dos motivos que levaram à rejeição de determinados registos.
-
-As tabelas auxiliares são persistentes e desempenham diferentes funções no processo de ETL:
-- **ETL_Control**: armazena a marca de água (watermark) de cada tabela, correspondente à data e hora do registo mais recente extraído com sucesso (secção 2.5).
-- **MAP_Cliente**: mantém a correspondência entre cada cliente e o respetivo grupo de duplicados. Esta tabela é necessária porque as camadas E_ e T_ contêm apenas os registos da carga incremental. Assim, quando surge um novo cliente, é possível compará-lo também com os clientes já carregados em execuções anteriores.
-- **T_Cambio**: armazena as taxas de câmbio de cada moeda para todos os dias abrangidos pelo calendário.
-- **MAP_Moeda**: contém a lista de moedas utilizadas e os respetivos mapeamentos, incluindo a correspondência entre «EURO» e «EUR»
-- **LOG_DiferencasFatura**: regista as correções feitas automaticamente aos valores das faturas: as linhas com o sinal trocado (P1), as faturas em que a soma das linhas difere do cabeçalho (P2) e os fretes recalculados (P3).
-
-As estruturas e os atributos de cada uma destas tabelas são apresentados com maior detalhe no capítulo 6.
+As tabelas de extração e de transformação contêm apenas os dados de cada execução e são esvaziadas no início da execução seguinte. Esta separação permite comparar os dados originais com os dados tratados e perceber em que passo um registo foi alterado ou rejeitado. As estruturas detalhadas de cada tabela são apresentadas no capítulo 6.
 
 ### 2.3 Data Mart
 
-O Data Mart corresponde à base de dados MoreRhythm_DM e segue a metodologia de Kimball, sendo constituído por várias dimensões e por uma tabela de factos de vendas, cujo grão corresponde à linha de fatura (capítulos 4 e 5). 
+O Data Mart corresponde à base de dados MoreRhythm_DM e segue a metodologia de Kimball, sendo constituído por várias dimensões e por uma tabela de factos de vendas, cujo grão corresponde à linha de fatura (capítulos 4 e 5).
 
-A DimData é a única dimensão que não é carregada a partir da staging area: é gerada uma única vez por um script SQL, diretamente no Data Mart, com todas as datas de 2020-01-01 a 2035-12-31. Para além dos atributos habituais de calendário, como o dia, o mês, o trimestre, o semestre e o ano, inclui também a semana segundo o padrão do SQL Server e a semana segundo a norma ISO 8601, acompanhada do respetivo ano ISO. Contém ainda informação sobre a estação meteorológica, o quadrimestre e indicadores que identificam o último dia do mês e os fins de semana.
+A DimData é a única dimensão que não é carregada a partir da *staging area*: é gerada uma única vez por um script SQL, diretamente no Data Mart, com todas as datas de 2020-01-01 a 2035-12-31 (secção 5.3).
 
 Apenas os processos de ETL têm permissões de escrita no Data Mart. Os utilizadores e o Power BI acedem aos dados exclusivamente para consulta, garantindo assim que as alterações aos dados são controladas pelos processos de carregamento.
 
@@ -177,7 +168,7 @@ A camada de apresentação é assegurada pelo Power BI, que estabelece ligação
 
 De acordo com os requisitos do enunciado, o processo de ETL segue uma estratégia de carga incremental. Em cada execução, é consultada a tabela ETL_Control para obter a marca d'água (*watermark*) de cada tabela. Com base nessa informação, são extraídos apenas os registos que foram inseridos ou alterados após a última extração bem-sucedida.
 
-Uma vez que a data e a hora de criação e de alteração estão armazenadas em colunas separadas na fonte, estes valores são combinados para obter uma única referência temporal. Para determinar a data de referência de cada registo, é utilizado o maior valor entre a data de criação e a data de alteração. Esta abordagem é necessária porque foram identificados 8 fornecedores e 8 produtos cuja data de alteração é anterior à data de criação. As tabelas zones e categories não possuem colunas de auditoria, pelo que são extraídas na sua totalidade em cada execução. O mesmo acontece com os ficheiros externos, embora, neste caso, apenas sejam inseridas as datas que ainda não existem na respetiva estrutura.
+Uma vez que a data e a hora de criação e de alteração estão armazenadas em colunas separadas na fonte, estes valores são combinados para obter uma única referência temporal. Para determinar a data de referência de cada registo, é utilizado o maior valor entre a data de criação e a data de alteração. Esta abordagem é necessária porque foram identificados 8 fornecedores e 8 produtos cuja data de alteração é anterior à data de criação. As tabelas zones e categories não possuem colunas de auditoria, pelo que são extraídas na sua totalidade em cada execução. O mesmo acontece com o ficheiro do BCE, embora, neste caso, apenas sejam inseridas as datas que ainda não existem na respetiva estrutura.
 
 No caso das faturas, alguns dos atributos necessários ao modelo dimensional, como o cliente, o empregado, as datas, a moeda e o custo de expedição (frete), encontram-se no cabeçalho da fatura, enquanto o grão definido corresponde à linha de fatura. Por esse motivo, são extraídas as linhas cuja própria data de alteração, ou a do respetivo cabeçalho, seja posterior à marca de água. Sempre que um cabeçalho sofre alterações, todas as linhas associadas à respetiva fatura são novamente processadas.
 
@@ -191,7 +182,7 @@ No final de cada execução bem-sucedida, a marca de água é atualizada na tabe
 
 A estrutura da tabela ETL_Control é apresentada na Tabela 1. O atributo LastExtractedAt utiliza o tipo de dados datetime2(7), garantindo a mesma precisão das colunas time(7) existentes na base de dados de origem e evitando que algum registo seja ignorado devido a arredondamento.
 
-Tabela 1 – Estrutura da tabela ETL_Control
+*Tabela 1 – Estrutura da tabela ETL_Control*
 
 | Coluna | Tipo | Descrição |
 | --- | --- | --- |
@@ -208,7 +199,7 @@ As ligações às bases de dados e os caminhos dos ficheiros são definidos atra
 
 Desta forma, para executar o projeto noutro computador ou ambiente, basta atualizar os valores dos parâmetros, sem necessidade de alterar os pacotes ou as respetivas expressões. Foram também acrescentados os parâmetros relativos ao servidor e à base de dados de origem, de acordo com os requisitos do enunciado.
 
-Tabela 2 – Parâmetros do projeto SSIS
+*Tabela 2 – Parâmetros do projeto SSIS*
 
 | Parâmetro | Tipo | Valor de exemplo | Utilização |
 | --- | --- | --- | --- |
@@ -217,7 +208,7 @@ Tabela 2 – Parâmetros do projeto SSIS
 | ServerName | String | (local) | Servidor do Data Mart e da staging area (o mesmo para ambos) |
 | StagingAreaDBName | String | MoreRhythm_SA | Nome da base de dados da staging area |
 | DataMartDBName | String | MoreRhythm_DM | Nome da base de dados do Data Mart |
-| PackagePath | String | C:\ARMDD\MoreRhythm | Pasta do projeto, onde estão as pastas BD e SQL |
+| PackagePath | String | C:\ARMDD\MoreRhythm | Pasta do projeto, onde estão as pastas BD e sql |
 
 ### 2.7 Repositório e organização do projeto
 
@@ -271,7 +262,7 @@ Na análise dos valores das faturas foram identificadas três situações que ex
 - **P2 - Diferenças no valor dos produtos**: em 2 faturas, o atributo products_total apresenta uma diferença de 5 euros relativamente à soma dos valores das linhas. Esta situação resulta da utilização do preço de tabela no cabeçalho. Uma vez que o valor do IVA indicado no cabeçalho corresponde aos valores calculados a partir das linhas, estas são consideradas a fonte de referência. As diferenças são registadas na tabela LOG_DiferencasFatura.
 - **P3 - Diferenças nos custos de expedição**: em outras 2 faturas, o atributo shipping_cost apresenta diferenças de 2,50 e 5,00 euros, respetivamente, apesar de o valor de total_for_vat estar correto. Nestes casos, os custos de expedição são recalculados através da diferença entre total_for_vat e products_total, sendo posteriormente distribuídos pelas linhas de forma proporcional ao respetivo *line_total*.
 
-As correções associadas a P1 e P3 também são registadas na tabela LOG_DiferencasFatura, incluindo o tipo de correção efetuada. Desta forma, todas as alterações realizadas automaticamente podem ser consultadas e rastreadas.
+As correções associadas a P1 e P3 também são registadas na tabela LOG_DiferencasFatura, incluindo o tipo de correção efetuada. Desta forma, todas as alterações realizadas automaticamente podem ser consultadas e rastreadas. Na amostra, esta tabela terá 8 registos: 4 relativos ao P1, 2 ao P2 e 2 ao P3.
 
 **Duplicação e identificação de clientes**
 
@@ -280,13 +271,13 @@ Foram identificados 3 grupos de clientes duplicados (P4):
 - Os clientes 5 e 26 apresentam dois algarismos consecutivos do NIF trocados, mas partilham o mesmo código postal.
 - Os clientes 8 e 22 apresentam a mesma situação, com dois algarismos consecutivos do NIF trocados e o mesmo código postal.
 
-Os duplicados exatos são identificados através do NIF. Para identificar os registos aproximadamente iguais, será utilizado o componente Fuzzy Grouping do SSIS, considerando o nome e o código postal. Esta abordagem permite identificar semelhanças entre registos que não são exatamente iguais, conforme previsto no enunciado, evitando depender de regras demasiado específicas para a amostra disponibilizada.
+Os duplicados exatos são identificados através do NIF. Apenas são comparados NIF válidos, com 9 dígitos e diferentes de 000000000, para que clientes sem NIF não sejam agrupados por engano. Para identificar os registos aproximadamente iguais, será utilizado o componente Fuzzy Grouping do SSIS, considerando o nome e o código postal. Esta abordagem permite identificar semelhanças entre registos que não são exatamente iguais, conforme previsto no enunciado, evitando depender de regras demasiado específicas para a amostra disponibilizada.
 
 Para a amostra atual, espera-se que este processo identifique os 3 grupos de duplicados referidos, o que será confirmado durante a implementação. Em cada grupo, será mantido o identificador correspondente ao menor número de cliente, enquanto os atributos serão obtidos a partir do registo com a alteração mais recente.
 
-Foram também identificados 3 clientes internos da empresa MaisRitmo, com NIF igual a 0, 00 ou vazio, e 2 fornecedores técnicos, identificados como «Compras a Dinheiro» e «MaisRitmo (interno)», que não têm vendas associadas. Uma vez que estes registos não representam entidades reais, serão encaminhados para as tabelas de erros.
+Foram também identificados 3 clientes internos da empresa MaisRitmo («MaisRitmo (interno)», «MaisRitmo - Filial Lisboa (interno)» e «MaisRitmo - Filial Porto (interno)»), todos do tipo «Interno» e com NIF igual a 0, 00 ou vazio, e 2 fornecedores técnicos, identificados como «Compras a Dinheiro» e «MaisRitmo (interno)». Os clientes internos não têm vendas na amostra e os fornecedores técnicos não estão associados a nenhum produto. Uma vez que estes registos não representam entidades reais, serão encaminhados para as tabelas de erros.
 
-Existe, contudo, uma exceção: o cliente «Vendas a Dinheiro», com NIF 000000000, representa as vendas realizadas a clientes não identificados. Por esse motivo, será mantido no Data Mart como cliente genérico, permitindo que as respetivas vendas sejam carregadas sem serem rejeitadas.
+Existe, contudo, uma exceção: o cliente «Vendas a Dinheiro», apesar de não ter um NIF válido (000000000) nem código postal, representa as vendas realizadas a clientes não identificados, que são vendas reais. Por esse motivo, será mantido no Data Mart como cliente genérico, com a cidade, a localidade, a zona e o país preenchidos com «Desconhecido». Caso fosse rejeitado, as futuras vendas a dinheiro também seriam rejeitadas por não encontrarem o cliente.
 
 **Localidades e zonas**
 
@@ -300,14 +291,14 @@ Foram identificados 12 produtos com pelo menos um dos seguintes atributos em fal
 
 Verificou-se também que os preços de tabela se encontram multiplicados por 1 000 000, pelo que será necessário dividir os respetivos valores por esse fator para obter os preços corretos.
 
-Relativamente às famílias, o atributo classification não está preenchido em 8 das 17 famílias. Nestes casos, a classificação será obtida a partir do atributo , que tem um único valor por família. Além disso, 4 famílias apresentam uma descrição extensa no próprio nome. Para acomodar esta situação no modelo dimensional, serão utilizados dois atributos distintos: Familia, para guardar o nome curto, e DescricaoFamilia, para armazenar a descrição completa.
+Relativamente às famílias, o atributo classification não está preenchido em 8 das 17 famílias. Nestes casos, a classificação será obtida a partir do atributo products.classification, que tem um único valor por família. Além disso, 4 famílias apresentam uma descrição extensa no próprio nome. Para acomodar esta situação no modelo dimensional, serão utilizados dois atributos distintos: Familia, para guardar o nome curto, e DescricaoFamilia, para armazenar a descrição completa.
 
 **Outros tratamentos**
 
 Foram ainda identificadas algumas situações adicionais que exigem tratamento:
 - Moedas: o valor «EURO» é utilizado na fonte para identificar a moeda, sendo convertido para o código normalizado «EUR».
 - Datas de criação dos clientes: foram identificadas 10 faturas com datas anteriores à data de criação dos respetivos clientes. Para garantir que estas vendas possam ser associadas a uma versão válida da dimensão Cliente, a primeira versão SCD Tipo 2 terá início em 1900-01-01.
-- Valores em falta: nas colunas do tipo char, será aplicada a função TRIM() para remover os espaços em branco no início e no final dos valores. Os valores NULL, constituídos apenas por espaços ou com texto vazio serão considerados como valores em falta.
+- Valores em falta: nas colunas do tipo char, será aplicada a função TRIM() para remover os espaços em branco à direita dos valores. Os valores NULL, constituídos apenas por espaços ou com texto vazio serão considerados como valores em falta.
 
 ### 3.4 Casos analisados e não tratados como problemas
 
@@ -343,13 +334,13 @@ A partir deste nível de detalhe é possível obter valores agregados ao nível 
 
 ### 4.3 Dimensões
 
-O modelo dimensional segue uma estrutura em estrela (star schema), sendo constituído por seis dimensões e uma dimensão degenerada. Os atributos relativos às zonas, famílias e categorias são integrados diretamente nas respetivas dimensões, evitando a criação de estruturas normalizadas adicionais (snowflake schema).
+O modelo dimensional segue uma estrutura em estrela (star schema), sendo constituído por seis dimensões e uma dimensão degenerada. Os atributos relativos às zonas, famílias e categorias são integrados diretamente nas respetivas dimensões, evitando a criação de estruturas normalizadas adicionais (snowflake schema), uma vez que esta abordagem torna as consultas mais simples.
 
-A **DimData** é utilizada em dois papéis distintos (role-playing dimension): data da fatura e data de pagamento. Esta abordagem permite analisar as vendas segundo ambas as datas, incluindo os prazos de pagamento. Uma vez que o enunciado não especifica o significado da «6.ª semana do ano», foram incluídas tanto a semana segundo o padrão do SQL Server como a semana ISO 8601. Relativamente às estações do ano, foram consideradas as estações meteorológicas, que, na amostra analisada, apresentam os mesmos resultados que as estações astronómicas. Não foi criada uma dimensão hora, uma vez que as horas disponíveis na fonte dizem respeito à auditoria dos registos e não ao momento da realização das vendas.
+A **DimData** é utilizada em dois papéis distintos (role-playing dimension): data da fatura e data de pagamento. Esta abordagem permite analisar as vendas segundo ambas as datas, incluindo os prazos de pagamento, que na amostra vão de 0 a 334 dias. Uma vez que o enunciado não especifica o significado da «6.ª semana do ano», foram incluídas tanto a semana segundo o padrão do SQL Server como a semana ISO 8601. Relativamente às estações do ano, foram consideradas as estações meteorológicas, que, na amostra analisada, apresentam os mesmos resultados que as estações astronómicas. Não foi criada uma dimensão hora, uma vez que as horas disponíveis na fonte dizem respeito à auditoria dos registos e não ao momento da realização das vendas.
 
 A **DimCliente** permite agrupar os registos de clientes identificados como duplicados e inclui os atributos de zona e país diretamente na dimensão. O país é derivado, uma vez que a tabela zones contém tanto regiões nacionais como a zona correspondente a Espanha.
 
-A **DimProduto** contempla duas hierarquias independentes: Classificação → Família → Produto e Categoria → Produto. Esta organização permite analisar os produtos segundo diferentes critérios, uma vez que a família e a categoria representam classificações distintas e não dependem uma da outra.
+A **DimProduto** contempla duas hierarquias independentes: Classificação → Família → Produto e Categoria → Produto. Esta organização permite analisar os produtos segundo diferentes critérios, uma vez que a família e a categoria representam classificações distintas e não dependem uma da outra. Por exemplo, a família «Acessorios» tem produtos de 4 categorias diferentes.
 
 A **DimFornecedor** é mantida como uma dimensão independente, apesar de a relação com o fornecedor estar associada ao produto na fonte. Esta decisão evita a criação de múltiplas versões de um mesmo produto sempre que os respetivos dados do fornecedor são alterados. Por exemplo, uma alteração nos dados do fornecedor 8 obrigaria à criação de 20 novas versões de produto caso essa informação estivesse integrada na DimProduto. Além disso, a dimensão poderá ser reutilizada num futuro Data Mart de compras.
 
@@ -534,7 +525,7 @@ A dimensão DimProduto contém uma linha por cada versão de produto (Tabela 7).
 
 A dimensão DimFornecedor contém uma linha por cada versão de fornecedor (Tabela 8). Permite analisar os dados através das hierarquias País → Zona → Fornecedor (análise 10), País → Cidade → Fornecedor e Tipo de fornecedor → Fornecedor.
 
-*Tabela 7 – Colunas da DimFornecedor*
+*Tabela 8 – Colunas da DimFornecedor*
 
 | Coluna         | Tipo         | Descrição                                           | Origem / regra                                                   |
 |----------------|--------------|-----------------------------------------------------|------------------------------------------------------------------|
@@ -592,3 +583,4 @@ Os atributos ClienteID e FornecedorID utilizam o tipo bigint, uma vez que as res
 As colunas originalmente definidas como char passam a varchar, mantendo o mesmo tamanho, uma vez que os espaços à direita são removidos durante o tratamento dos dados. O código postal também passa a varchar(10), pois no modelo é guardado apenas o código, sem a localidade.
 
 As restantes colunas mantêm os tipos de dados da fonte.
+
