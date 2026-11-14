@@ -148,7 +148,7 @@ As tabelas estão organizadas em três grupos:
 
 - **Extração (E_)**: recebem os dados diretamente da fonte, mantendo os tipos de dados e as colunas de auditoria originais.
 - **Transformação (T_)**: armazenam os dados após a limpeza, a deduplicação e a integração, prontos para serem carregados no Data Mart.
-- **Persistentes**: guardam a informação que tem de ser mantida entre execuções, nomeadamente a data da última extração de cada tabela (ETL_Control), os mapeamentos de clientes duplicados e de moedas (MAP_Cliente e MAP_Moeda), os registos rejeitados (ERR_Clientes e ERR_Fornecedores) e as correções feitas aos valores das faturas (LOG_DiferencasFatura).
+- **Persistentes**: guardam a informação que tem de ser mantida entre execuções, nomeadamente a data da última extração de cada tabela (ETL_Control), os mapeamentos de clientes duplicados e de moedas (MAP_Cliente e MAP_Moeda), os registos rejeitados (ERR_Clientes, ERR_Fornecedores e ERR_Faturas).
 
 As tabelas de extração e de transformação contêm apenas os dados de cada execução e são esvaziadas no início da execução seguinte. Esta separação permite comparar os dados originais com os dados tratados e perceber em que passo um registo foi alterado ou rejeitado. As estruturas detalhadas de cada tabela são apresentadas no capítulo 6.
 
@@ -299,6 +299,7 @@ Foram ainda identificadas algumas situações adicionais que exigem tratamento:
 - Moedas: o valor «EURO» é utilizado na fonte para identificar a moeda, sendo convertido para o código normalizado «EUR».
 - Datas de criação dos clientes: foram identificadas 10 faturas com datas anteriores à data de criação dos respetivos clientes. Para garantir que estas vendas possam ser associadas a uma versão válida da dimensão Cliente, a primeira versão SCD Tipo 2 terá início em 1900-01-01.
 - Valores em falta: nas colunas do tipo char, será aplicada a função TRIM() para remover os espaços em branco à direita dos valores. Os valores NULL, constituídos apenas por espaços ou com texto vazio serão considerados como valores em falta.
+- Faturas rejeitadas: uma fatura com uma moeda sem correspondência na MAP_Moeda, ou com uma linha sem IVA, não pode ser corrigida automaticamente e é rejeitada por inteiro para a tabela ERR_Faturas. Na amostra não existe nenhum destes casos.
 
 ### 3.4 Casos analisados e não tratados como problemas
 
@@ -584,3 +585,227 @@ As colunas originalmente definidas como char passam a varchar, mantendo o mesmo 
 
 As restantes colunas mantêm os tipos de dados da fonte.
 
+## 6. Staging area
+
+Este capítulo define as estruturas de dados da *staging area*: as tabelas de cada grupo, as tabelas persistentes e o ficheiro externo. As regras de transformação e limpeza de cada coluna estão no capítulo 7.
+
+### 6.1 Visão geral
+
+A *staging area* é a base de dados MoreRhythm_SA. Usa a mesma collation da fonte (Latin1_General_CI_AS), para não haver conflitos quando se comparam textos das duas bases de dados. Não tem chaves estrangeiras, porque as relações entre as tabelas são geridas pelo ETL. As tabelas estão organizadas em três grupos, identificados pelo prefixo do nome (Tabela 11).
+
+*Tabela 11 – Grupos de tabelas da staging area*
+
+| Grupo | Prefixo | Conteúdo | Entre execuções |
+|---|---|---|---|
+| Extração | E_ | Cópia dos registos novos ou alterados da fonte e do CSV do BCE, com os nomes e os tipos da fonte | Esvaziadas no início de cada execução |
+| Transformação | T_ | Dados limpos e transformados, com os nomes e os tipos do Data Mart | Esvaziadas no início de cada execução |
+| Persistentes | ETL_, MAP_, LOG_, ERR_ | Data da última extração, mapeamentos de clientes e moedas, correções e registos rejeitados | Mantidas |
+
+Em cada execução, os dados da fonte e do CSV do BCE são copiados para as tabelas E_. Depois são limpos e transformados para as tabelas T_ e, por fim, carregados no Data Mart. Durante a transformação, os registos rejeitados vão para as tabelas ERR_ e as correções aos valores das faturas ficam registadas na LOG_DiferencasFatura.
+
+### 6.2 Tabelas persistentes
+
+Estas tabelas não são apagadas entre execuções (Tabela 12).
+
+*Tabela 12 – Tabelas persistentes da staging area*
+
+| Tabela | Conteúdo |
+|---|---|
+| ETL_Control | Uma linha por tabela da fonte com colunas de auditoria, com a maior data e hora de alteração já extraída. Começa em 0001-01-01, por isso a primeira execução extrai tudo. A estrutura está na Tabela 1 (secção 2.5) |
+| MAP_Cliente | Todos os clientes já vistos: número do cliente na fonte (NumeroOrigem), número do grupo de duplicados (ClienteID, que corresponde ao ClienteID do Data Mart), nome (Nome), NIF (NIF) e código postal (CodigoPostal). O nome, o NIF e o código postal são usados na deteção de duplicados, para comparar um cliente novo com os já carregados |
+| MAP_Moeda | Moeda como vem da fonte (MoedaOrigem), código ISO (CodigoISO), nome (Nome) e símbolo (Simbolo). Tem o euro («EURO» → «EUR») e a libra («LIBRA» → «GBP»), para a expansão para o Reino Unido. O valor «LIBRA» é assumido, porque ainda não há vendas em libras |
+| LOG_DiferencasFatura | Uma linha por correção feita aos valores das faturas: tipo de correção (TipoCorrecao: sinal trocado, P1; total dos produtos, P2; frete, P3), número da fatura, linha da fatura (só no P1), campo corrigido, valor original, valor usado e data da carga |
+| ERR_Clientes | Clientes rejeitados (os clientes internos): colunas da fonte, motivo (Motivo) e data da carga (DataCarga) |
+| ERR_Fornecedores | Fornecedores rejeitados (os fornecedores técnicos): colunas da fonte, motivo e data da carga |
+| ERR_Faturas | Faturas rejeitadas por inteiro (moeda sem correspondência na MAP_Moeda ou linha sem IVA): número, data, cliente e moeda da fatura, motivo e data da carga |
+
+Cada grupo de tabelas tem um papel distinto na preparação dos dados. As tabelas de extração isolam o sistema operacional, que é lido uma única vez por execução. As de transformação concentram a limpeza e a integração, deixando os dados prontos a carregar sem mais regras. As persistentes guardam o que tem de sobreviver entre execuções: a ETL_Control garante que nenhum registo é extraído duas vezes ou esquecido, a MAP_Cliente garante que um cliente novo é comparado com os já carregados, e as tabelas de erros e o LOG permitem explicar qualquer registo que não chegou ao Data Mart ou que chegou com valores diferentes dos da fonte.
+
+### 6.3 Extração
+
+Há uma tabela E_ por tabela da fonte, só com as colunas usadas e as colunas de auditoria. Os nomes e os tipos são os da fonte, para a cópia ser direta. Um registo é extraído quando a sua data de alteração (a maior entre a criação e a alteração, secção 2.5) é posterior à data da última extração da tabela (Tabela 13).
+
+*Tabela 13 – Tabelas de extração*
+
+| Tabela | Colunas extraídas | Regra de extração |
+|---|---|---|
+| E_customers | number, name, taxpayer_number, clity, zip_code, zone, type, segment + auditoria | Cliente alterado depois da última extração. Os contactos, o BBAN e o seller ficam de fora |
+| E_suplliers | number, name, taxpayer_number, city, zip_code, zone, type, nationality + auditoria | Fornecedor alterado depois da última extração |
+| E_employees | number, name, group, departament, chief, chief_name + auditoria | Empregado alterado depois da última extração. O chief_name é o nome do chefe, obtido juntando a tabela employees com ela própria |
+| E_products | reference, designation, family, category, classification, vat_rate, current_sell_price, last_cost_price + auditoria | Produto alterado, ou família do produto alterada, depois da última extração |
+| E_families | reference, name, classification + auditoria | Tabela completa |
+| E_categories | Code, Category | Tabela completa (não tem colunas de auditoria) |
+| E_zones | code, zone | Tabela completa (não tem colunas de auditoria) |
+| E_invoices | invoice_stamp_id, invoice_date, payment_date, customer, employee, currency, products_total, shipping_cost, total_for_vat + auditoria | Fatura cujo cabeçalho ou alguma linha foi alterada depois da última extração |
+| E_invoices_lines | invoice_line_stamp_id, invoice_stamp_id, product, supplyer, quantity, unit_price, line_total, line_vat + auditoria | Todas as linhas das faturas extraídas. O supplyer vem do produto da linha |
+| E_ECB | Currency, DATE, TIME_PERIOD, Value | Ficheiro CSV completo. A coluna Currency é acrescentada (GBP). O Value fica em texto, porque até 2012 os feriados vêm sem valor |
+
+O vat_value e o final_total não são extraídos, porque o IVA vem das linhas e os totais são calculados. O frete usado é total_for_vat − products_total (secção 3.3). O shipping_cost é extraído só para registar na LOG_DiferencasFatura o valor original das faturas com o frete errado (P3).
+
+### 6.4 Transformação
+
+Há uma tabela T_ por tabela do Data Mart, com os nomes e os tipos do capítulo 5, mais a tabela das taxas de câmbio (Tabela 14).
+
+*Tabela 14 – Tabelas de transformação*
+
+| Tabela | Uma linha por | Chave | Origem na staging | Destino |
+|---|---|---|---|---|
+| T_Cliente | cliente (grupo de duplicados) | ClienteID | E_customers, E_zones, MAP_Cliente | DimCliente |
+| T_Fornecedor | fornecedor | FornecedorID | E_suplliers, E_zones | DimFornecedor |
+| T_Empregado | empregado | EmpregadoID | E_employees | DimEmpregado |
+| T_Produto | produto | ProdutoID | E_products, E_families, E_categories | DimProduto |
+| T_Cambio | dia e moeda | Data, CodigoISO | E_ECB, MAP_Moeda | Usada na T_FactVendas |
+| T_FactVendas | linha de fatura | LinhaID (invoice_line_stamp_id) | E_invoices, E_invoices_lines, MAP_Cliente, MAP_Moeda, T_Cambio | FactVendas |
+
+As tabelas das dimensões têm também a coluna UltimaAlteracao, com a data de alteração do registo na fonte, que dá o início de validade de uma nova versão (SCD tipo 2). A T_Cambio tem a taxa de cada moeda para todos os dias do calendário, com o euro a 1 e, nos fins de semana e feriados, a taxa do último dia útil anterior. É reconstruída em cada execução a partir da E_ECB. A T_FactVendas guarda as chaves naturais (o ClienteID já convertido pela MAP_Cliente, o ProdutoID, o FornecedorID, o EmpregadoID e a moeda) e todas as medidas já calculadas, na moeda original e em euros, com a taxa da T_Cambio. As chaves substitutas só são procuradas na carga do Data Mart. A DimMoeda é carregada diretamente da MAP_Moeda.
+
+### 6.5 Ficheiro externo
+
+O único ficheiro externo é o ECB Data EUR GBP.csv, que fica na pasta BD do projeto. Tem três colunas: DATE (a data, no formato AAAA-MM-DD), TIME PERIOD (a data por extenso, por exemplo «04 Jan 1999») e a taxa de referência, em libras por 1 euro. Tem uma linha por dia útil desde 04/01/1999, todos os valores entre aspas, o ponto como separador decimal e o fim de linha LF. É lido por inteiro em cada execução.
+
+A DimData não vem de nenhum ficheiro: é gerada uma única vez por um script SQL, diretamente no Data Mart (secção 5.3).
+
+## 7. Mapeamentos de dados e estratégia de SCD
+
+Este capítulo descreve o percurso dos dados desde a base de dados de origem até à staging area e, posteriormente, ao Data Mart. Para cada atributo das dimensões e cada coluna da tabela de factos, são indicadas a origem na fonte, a transformação aplicada e, nas dimensões, a estratégia de Slowly Changing Dimensions (SCD).
+
+### 7.1 Fonte → staging area (extração)
+
+As tabelas de extração (E_) replicam a estrutura das tabelas de origem, mantendo os nomes das colunas e os respetivos tipos de dados, incluindo as colunas de auditoria. São esvaziadas no início de cada execução e recebem apenas os registos criados ou alterados desde a data da última extração, guardada na tabela ETL_Control (secção 2.5). 
+
+As tabelas sem colunas de auditoria (zones e categories), a tabela families e o ficheiro do BCE são extraídos por inteiro. As colunas extraídas e a regra de extração de cada tabela estão na Tabela 13 (secção 6.3).
+
+### 7.2 Staging area → Data Mart (transformação e carregamento)
+
+As tabelas de transformação (T_) recebem os dados extraídos, aplicam as regras de limpeza e integração definidas no capítulo 3 e preparam-nos para o carregamento no Data Mart. A Tabela 14 (secção 6.4) indica as tabelas de origem e o destino de cada uma. A DimMoeda é carregada diretamente da MAP_Moeda e a DimData é gerada por script.
+
+As dimensões são carregadas antes da tabela de factos, uma vez que esta depende das chaves substitutas atribuídas às dimensões.
+
+Como as tabelas de extração só têm os registos alterados, os atributos que vêm de outro registo são juntados logo na extração (Tabela 13): o fornecedor do produto vem com cada linha de fatura, o nome do chefe vem com cada empregado, e um produto é extraído também quando a sua família é alterada. Assim, a informação relacionada está sempre disponível, mesmo quando esse registo não foi alterado.
+
+### 7.3 Mapeamento dos atributos e estratégia de SCD
+
+Para cada atributo das dimensões, as Tabelas 15 a 19 indicam a origem na fonte, a tabela de transformação da staging area, a transformação aplicada e a estratégia de SCD. Em todos os atributos de texto são removidos os espaços à direita, e os valores NULL, vazios ou só com espaços passam a «Desconhecido», exceto quando a tabela indica outra regra.
+
+Usamos dois tipos de SCD:
+
+- **Tipo 1 (sobrescrever):** para correções e atributos cujo histórico não interessa às análises, como nomes, NIF ou preços de tabela. A alteração é aplicada a todas as versões do registo com a mesma chave natural, para que as vendas antigas também mostrem o valor corrigido.
+- **Tipo 2 (nova versão):** para os atributos usados para agrupar as vendas nas análises, como a zona, o tipo de cliente, a família ou a categoria. Quando um destes atributos muda, a versão atual é fechada (DataFim = dia anterior à alteração e Atual = 0) e é criada uma nova versão, com nova chave substituta, DataInicio = data da alteração e Atual = 1. Assim, cada venda continua associada ao valor que o atributo tinha na data da fatura.
+
+A data da alteração é a data de alteração do registo na fonte (last_update_date). A primeira versão de cada registo começa em 1900-01-01 e a versão atual termina em 9999-12-31 (secção 5.1). Os preços praticados e o IVA de cada venda ficam guardados nos factos, por isso não precisam de histórico nas dimensões.
+
+Nos atributos desnormalizados distinguimos dois casos. Se um produto passa para outra família, é uma mudança do produto (tipo 2). Se a própria família muda de nome, é uma correção (tipo 1), aplicada a todos os produtos dessa família. O mesmo vale para a categoria, a zona e o nome do chefe. As chaves substitutas (ClienteKey, ProdutoKey, etc.) são geradas no Data Mart (IDENTITY) e as colunas DataInicio, DataFim e Atual são geridas pelo próprio SCD, por isso não aparecem nas tabelas seguintes.
+
+*Tabela 15 – Mapeamento e SCD da DimCliente (staging: T_Cliente)*
+
+| Atributo | Origem | Transformação | SCD |
+|---|---|---|---|
+| ClienteID | customers.number | Substituído pelo menor número do grupo de duplicados (MAP_Cliente) | – (chave natural) |
+| Nome | customers.name | Nos duplicados, vem do registo alterado mais recentemente | 1 |
+| NIF | customers.taxpayer_number | Nos duplicados, vem do registo alterado mais recentemente | 1 |
+| CodigoPostal | customers.zip_code | Só o código (antes do espaço), sem a localidade | 2 |
+| Cidade | customers.zip_code | Localidade postal (texto depois do código). Cliente 21: «Alcobendas»; «Vendas a Dinheiro»: «Desconhecido» | 2 |
+| Localidade | customers.clity | Mantida como bairro ou lugar | 2 |
+| Zona | zones.zone via customers.zone | Lookup à tabela zones | 2 |
+| Pais | zones.zone e customers.zip_code | Derivado: «Espanha» na zona Espanha, «Portugal» nas restantes | 2 |
+| TipoCliente | customers.type | Sem transformação | 2 |
+| Segmento | customers.segment | Sem transformação | 2 |
+
+*Tabela 16 – Mapeamento e SCD da DimProduto (staging: T_Produto)*
+
+| Atributo | Origem | Transformação | SCD |
+|---|---|---|---|
+| ProdutoID | products.reference | Sem espaços à direita | – (chave natural) |
+| Designacao | products.designation | «Desconhecido» se vazia | 1 |
+| Familia | families.name via products.family | Nas 4 famílias cujo nome é uma descrição longa, usa-se families.reference | 2 |
+| DescricaoFamilia | families.name via products.family | Nome completo da família | 1 |
+| ClassificacaoFamilia | products.classification | Usada em vez de families.classification, vazia em 8 famílias | 2 |
+| Categoria | categories.Category via products.category | Lookup à tabela categories | 2 |
+| TaxaIVA | products.vat_rate | Nulo se em falta | 1 |
+| PrecoVendaTabela | products.current_sell_price | Dividido por 1 000 000 | 1 |
+| CustoTabela | products.last_cost_price | Dividido por 1 000 000 | 1 |
+
+*Tabela 17 – Mapeamento e SCD da DimFornecedor (staging: T_Fornecedor)*
+
+| Atributo | Origem | Transformação | SCD |
+|---|---|---|---|
+| FornecedorID | suplliers.number | Os 2 fornecedores técnicos vão para ERR_Fornecedores | – (chave natural) |
+| Nome | suplliers.name | Sem transformação | 1 |
+| NIF | suplliers.taxpayer_number | Sem transformação | 1 |
+| CodigoPostal | suplliers.zip_code | Só o código, sem a localidade | 1 |
+| Cidade | suplliers.zip_code | Localidade postal. Fornecedor 10: «Desconhecido» | 1 |
+| Localidade | suplliers.city | Mantida como bairro ou lugar | 1 |
+| Zona | zones.zone via suplliers.zone | Lookup à tabela zones | 2 |
+| Pais | zones.zone, suplliers.nationality e zip_code | Derivado | 2 |
+| TipoFornecedor | suplliers.type | Sem transformação | 1 |
+
+*Tabela 18 – Mapeamento e SCD da DimEmpregado (staging: T_Empregado)*
+
+| Atributo | Origem | Transformação | SCD |
+|---|---|---|---|
+| EmpregadoID | employees.number | Sem transformação | – (chave natural) |
+| Nome | employees.name | Sem transformação | 1 |
+| Grupo | employees.group | Sem transformação | 2 |
+| Departamento | employees.departament | Sem transformação | 2 |
+| Chefe | employees.name do empregado indicado em employees.chief | Lookup à própria tabela employees da fonte. «Sem chefe» quando chief é nulo | 2 |
+
+*Tabela 19 – Mapeamento e SCD da DimMoeda (staging: MAP_Moeda)*
+
+| Atributo | Origem | Transformação | SCD |
+|---|---|---|---|
+| CodigoISO | invoices.currency | Normalizado com a MAP_Moeda («EURO» → «EUR») | – (chave natural) |
+| Nome | MAP_Moeda | Sem transformação | 1 |
+| Simbolo | MAP_Moeda | Sem transformação | 1 |
+
+A DimData é gerada uma única vez por script (secção 2.3) e não sofre alterações, por isso não tem mapeamento a partir da fonte nem estratégia de SCD.
+
+### 7.4 Mapeamento da tabela de factos
+
+A Tabela 20 mostra o mapeamento da FactVendas, preparada na T_FactVendas. Cada linha corresponde a uma linha de fatura. As chaves das dimensões são obtidas por lookup à versão da dimensão válida na data da fatura (DataInicio ≤ data da fatura ≤ DataFim) e, quando não existe correspondência, ficam com −1 («Desconhecido»).
+
+*Tabela 20 – Mapeamento da FactVendas (staging: T_FactVendas)*
+
+| Coluna | Origem | Transformação |
+|---|---|---|
+| DataFaturaKey | invoices.invoice_date | Convertida para AAAAMMDD |
+| DataPagamentoKey | invoices.payment_date | Convertida para AAAAMMDD |
+| ClienteKey | invoices.customer | MAP_Cliente (grupo de duplicados) → lookup à DimCliente |
+| ProdutoKey | invoices_lines.product | Lookup à DimProduto |
+| FornecedorKey | products.supplyer do produto da linha | E_invoices_lines.supplyer (obtido na extração) → lookup à DimFornecedor |
+| EmpregadoKey | invoices.employee | Lookup à DimEmpregado |
+| MoedaKey | invoices.currency | MAP_Moeda («EURO» → «EUR») → lookup à DimMoeda |
+| NumeroFatura | invoices.invoice_stamp_id | Identificador completo, sem espaços à direita |
+| Quantidade | invoices_lines.quantity | ABS() quando o sinal não corresponde ao do line_total (P1) |
+| PrecoUnitario | invoices_lines.unit_price | ABS() quando o sinal não corresponde ao do line_total (P1) |
+| ValorProdutos | invoices_lines.line_total | Sem transformação |
+| ValorIVA | invoices_lines.line_vat | Sem transformação |
+| ValorFrete | invoices.total_for_vat, invoices.products_total e invoices_lines.line_total | (total_for_vat − products_total) × line_total / Σ line_total da fatura (P3) |
+| ValorSemIVA | Calculado | ValorProdutos + ValorFrete |
+| ValorComIVA | Calculado | ValorProdutos + ValorFrete + ValorIVA |
+| TaxaCambio | T_Cambio (CSV do BCE) | Taxa da data da fatura; último dia útil anterior se não houver cotação; 1 para o euro |
+| PrecoUnitarioEUR, ValorProdutosEUR, ValorIVAEUR, ValorFreteEUR, ValorSemIVAEUR, ValorComIVAEUR | Calculados | Valor na moeda original / TaxaCambio |
+
+As correções de P1, P2 e P3 ficam registadas na LOG_DiferencasFatura (secção 3.3).
+
+## 8. Conclusões
+
+Nesta primeira parte do projeto foi desenvolvido o desenho do Data Mart de vendas da More Rhythm, incluindo a arquitetura, o modelo dimensional em estrela, as estruturas da staging area e os mapeamentos de dados, bem como a estratégia de SCD definida para cada atributo.
+
+A granularidade escolhida, correspondente a uma linha de fatura, permite responder às 10 análises propostas no enunciado e também serve de base às análises adicionais que venham a ser desenvolvidas.
+
+O data profiling teve um papel importante nas decisões de desenho. Foi através desta análise que identificámos a regra do frete (2,5% do valor dos produtos), que permite repartir o respetivo valor pelas linhas de fatura, os três grupos de clientes duplicados — dois dos quais apenas foram identificados através de correspondência aproximada — e as inconsistências nos totais das faturas. Estas últimas levaram-nos a considerar as linhas como fonte de verdade para os valores dos produtos.
+
+### 8.1 Limitações
+
+Apesar das decisões tomadas, existem algumas limitações que importa considerar:
+- As regras de negócio foram inferidas a partir de uma amostra reduzida, composta por 37 faturas distribuídas por apenas 5 datas. Com dados reais poderão surgir exceções, nomeadamente faturas cujo frete não siga a regra dos 2,5%.
+- A amostra contém apenas transações em euros. Embora o tratamento de outras moedas esteja previsto no modelo, não foi possível testá-lo com os dados disponíveis.
+- As análises 6 e 10 não apresentam resultados na amostra, devido à ausência de vendas nos períodos e famílias em causa.
+- O histórico das dimensões depende das datas de alteração disponibilizadas pela fonte. Se um registo for alterado várias vezes entre duas execuções do ETL, apenas a última versão será identificada e registada.
+
+### 8.2 Melhorias possíveis
+
+Como possíveis melhorias e desenvolvimentos futuros, destacamos:
+- Criar dados de teste que permitam validar as análises sem resultados na amostra e testar o tratamento de transações em libras.
+- Reutilizar as dimensões conformadas (DimData, DimProduto, DimFornecedor e DimEmpregado) em futuros Data Marts de compras e stocks, de acordo com a matriz de barramento apresentada na secção 4.5.
+- Confirmar com a empresa as regras de negócio inferidas durante o profiling, em particular a regra do frete e o tratamento dos clientes técnicos.
