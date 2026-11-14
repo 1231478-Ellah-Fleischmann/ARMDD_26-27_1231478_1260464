@@ -59,6 +59,20 @@ Porto, novembro de 2026
     - 5.7 DimEmpregado
     - 5.8 DimMoeda
     - 5.9 Tipos de dados
+- 6\. Staging area
+    - 6.1 Visão geral
+    - 6.2 Tabelas persistentes
+    - 6.3 Extração
+    - 6.4 Transformação
+    - 6.5 Ficheiro externo
+- 7\. Mapeamentos de dados e estratégia de SCD
+    - 7.1 Fonte → staging area (extração)
+    - 7.2 Staging area → Data Mart (transformação e carregamento)
+    - 7.3 Mapeamento dos atributos e estratégia de SCD
+    - 7.4 Mapeamento da tabela de factos
+- 8\. Conclusões
+    - 8.1 Limitações
+    - 8.2 Melhorias possíveis
 
 <div style="page-break-after: always;"></div>
 
@@ -170,7 +184,7 @@ De acordo com os requisitos do enunciado, o processo de ETL segue uma estratégi
 
 Uma vez que a data e a hora de criação e de alteração estão armazenadas em colunas separadas na fonte, estes valores são combinados para obter uma única referência temporal. Para determinar a data de referência de cada registo, é utilizado o maior valor entre a data de criação e a data de alteração. Esta abordagem é necessária porque foram identificados 8 fornecedores e 8 produtos cuja data de alteração é anterior à data de criação. As tabelas zones e categories não possuem colunas de auditoria, pelo que são extraídas na sua totalidade em cada execução. O mesmo acontece com o ficheiro do BCE, embora, neste caso, apenas sejam inseridas as datas que ainda não existem na respetiva estrutura.
 
-No caso das faturas, alguns dos atributos necessários ao modelo dimensional, como o cliente, o empregado, as datas, a moeda e o custo de expedição (frete), encontram-se no cabeçalho da fatura, enquanto o grão definido corresponde à linha de fatura. Por esse motivo, são extraídas as linhas cuja própria data de alteração, ou a do respetivo cabeçalho, seja posterior à marca de água. Sempre que um cabeçalho sofre alterações, todas as linhas associadas à respetiva fatura são novamente processadas.
+No caso das faturas, alguns dos atributos necessários ao modelo dimensional, como o cliente, o empregado, as datas, a moeda e o custo de expedição (frete), encontram-se no cabeçalho da fatura, enquanto o grão definido corresponde à linha de fatura. Por esse motivo, são extraídas as linhas cuja própria data de alteração, ou a do respetivo cabeçalho, seja posterior à marca d'agua. Sempre que um cabeçalho sofre alterações, todas as linhas associadas à respetiva fatura são novamente processadas.
 
 Esta abordagem é particularmente importante, uma vez que 36 das 37 faturas da amostra foram alteradas após a sua criação, tendo sido identificados intervalos de até 334 dias entre os dois momentos. Além disso, é necessário garantir que as alterações nos atributos desnormalizados são refletidas nas tabelas correspondentes do Data Mart. Por exemplo, uma alteração numa família, categoria, zona ou no nome de um chefe implica o reprocessamento dos produtos, clientes, fornecedores ou funcionários afetados, respetivamente.
 
@@ -178,7 +192,7 @@ O carregamento das dimensões é realizado antes do carregamento da tabela de fa
 
 Para garantir a consistência dos dados, as linhas de cada fatura alterada são eliminadas e novamente inseridas no Data Mart. Desta forma, são também contempladas situações em que tenham sido acrescentadas ou eliminadas linhas de uma fatura. A identificação de cada fatura é feita através do valor completo de *invoice_stamp_id*, uma vez que o prefixo anterior à vírgula não é único.
 
-No final de cada execução bem-sucedida, a marca de água é atualizada na tabela ETL_Control. Caso ocorra uma falha durante o processo, a marca de água não é atualizada, permitindo que, na execução seguinte, os mesmos registos sejam novamente extraídos e processados.
+No final de cada execução bem-sucedida, a marca d'água é atualizada na tabela ETL_Control. Caso ocorra uma falha durante o processo, a marca d'água não é atualizada, permitindo que, na execução seguinte, os mesmos registos sejam novamente extraídos e processados.
 
 A estrutura da tabela ETL_Control é apresentada na Tabela 1. O atributo LastExtractedAt utiliza o tipo de dados datetime2(7), garantindo a mesma precisão das colunas time(7) existentes na base de dados de origem e evitando que algum registo seja ignorado devido a arredondamento.
 
@@ -319,7 +333,7 @@ Por último, embora o enunciado faça referência à família «Acessórios», n
 
 ## 4. Análise dimensional
 
-O desenho do modelo dimensional segue os quatro passos da metodologia de Kimball. As decisões tomadas ao longo deste processo, incluindo as diferentes opções consideradas e as respetivas vantagens e desvantagens, encontram-se documentadas no repositório do projeto, no ficheiro docs/decisoes.md.
+O desenho do modelo dimensional segue os quatro passos da metodologia de Kimball. As decisões tomadas ao longo deste processo, incluindo as diferentes opções consideradas e as respetivas vantagens e desvantagens, encontram-se documentadas no repositório do projeto, no ficheiro docs/parte1/decisoes.md.
 
 ### 4.1 Processo de negócio
 

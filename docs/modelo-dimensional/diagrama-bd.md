@@ -5,7 +5,7 @@ Diagramas em Mermaid (o GitHub e o VS Code mostram-nos como figuras). Há três 
 | BD | Papel | Tabelas |
 |---|---|---|
 | `MoreRhythm` | Fonte (sistema operacional) | 12 tabelas, ligadas por chaves estrangeiras |
-| `MoreRhythm_SA` | Staging area (capítulo 6) | 22 tabelas, sem chaves estrangeiras: as ligações são feitas pelo ETL |
+| `MoreRhythm_SA` | Staging area (capítulo 6) | 23 tabelas, sem chaves estrangeiras: as ligações são feitas pelo ETL |
 | `MoreRhythm_DM` | Data mart (capítulo 5) | 6 dimensões + 1 tabela de factos, em estrela |
 
 ## 1. Visão geral do fluxo
@@ -16,45 +16,48 @@ Igual à Figura 1 do relatório.
 ---
 config:
   layout: elk
+  flowchart:
+    curve: basis
 ---
-flowchart LR
+flowchart TB
     subgraph FONTE["1 - Fontes de dados"]
         MR[("BD operacional<br/>MoreRhythm<br/>SQL Server 2025")]
         ECB["Taxas de câmbio do BCE<br/>ficheiro CSV"]
     end
 
-    subgraph STG["2 - Staging area (MoreRhythm_SA)"]
-        CTRL["ETL_Control<br/>data da última extração<br/>de cada tabela"]
-        RAW["Extração: E_*<br/>dados como na fonte"]
-        TR["Transformação: T_*<br/>limpos, deduplicados<br/>e integrados"]
-        ERR["ERR_Clientes<br/>ERR_Fornecedores<br/>registos rejeitados"]
-        LOG["LOG_DiferencasFatura"]
+    subgraph STG["2 - Staging Area: MoreRhythm_SA"]
+        E["<b>Extração</b>: tabelas E_*<br/>dados como na fonte"]
+        CTRL["ETL_Control"]
+        LOG["Registo de auditoria<br/>LOG_DiferencasFatura"]
+        ERR["Tabelas de erros ERR_*<br/>registos rejeitados"]
+        T["<b>Transformação</b>: tabelas de<br/>transformação, limpeza,<br/>integração, duplicados."]
         MAP["MAP_Cliente<br/>MAP_Moeda"]
     end
 
-    subgraph DM["3 - Data Mart (MoreRhythm_DM)"]
-        SCR["Script SQL<br/>(DimData)"]
-        DIM["Dimensões<br/>DimData, DimCliente,<br/>DimProduto, DimFornecedor,<br/>DimEmpregado, DimMoeda"]
-        FACT["FactVendas<br/>grão: linha de fatura"]
+    subgraph DM["3 - Data Mart: MoreRhythm_DM"]
+        SCR["SQL Script<br/>DimData"]
+        DIM["Tabelas de Dimensões<br/>(Ex: DimCliente,<br/>DimFornecedor,<br/>DimProduto, etc.)"]
+        FACT["Tabelas de Factos<br/>(FactVendas, grão: linha<br/>de fatura)"]
     end
 
     subgraph APR["4 - Apresentação"]
-        PBI["Power BI<br/>20 análises"]
+        PBI["Power BI"]
     end
 
-    MR -- "carga incremental" --> RAW
-    ECB -- "ficheiro completo" --> RAW
-    CTRL <-. "lê / atualiza" .-> RAW
+    MR -- "<b>Carga incremental</b><br/>(só registos novos<br/>ou alterados desde<br/>a última execução)" --> E
+    ECB -- "<b>Ficheiro completo</b><br/>(dias sem taxa usam o último<br/>dia útil anterior)" --> E
 
-    RAW -- "limpeza e transformação" --> TR
-    RAW -. "não corrigíveis" .-> ERR
-    RAW -. "correções P1, P2 e P3" .-> LOG
-    MAP <-. "duplicados e moedas" .-> TR
+    CTRL -- "lê a data da<br/>última extração" --> E
+    E -- "atualiza a data da<br/>última extração" --> CTRL
+    E -- "correções<br/>P1, P2 e P3" --> LOG
+    E -- "Não corrigíveis" --> ERR
+    E -- "limpeza e<br/>transformação" --> T
+    MAP <-- "duplicados e<br/>moedas" --> T
 
-    SCR -. "gerada uma vez" .-> DIM
-    TR -- "1.º carga das dimensões<br/>(SCD e criação das SK)" --> DIM
-    TR -- "2.º carga dos factos" --> FACT
-    DIM -. "lookup das SK" .-> FACT
+    T -- "<b>1. Carga das dimensões</b><br/>(SCD, criação das SKs)" --> DIM
+    T -- "2. Carga dos<br/>factos" --> FACT
+    SCR -- "gerada uma vez" --> DIM
+    DIM -- "lookup<br/>das SKs" --> FACT
 
     FACT -- "só leitura" --> PBI
 ```
@@ -197,6 +200,7 @@ flowchart LR
         mm["MAP_Moeda"]
         ec["ERR_Clientes"]
         ef["ERR_Fornecedores"]
+        efa["ERR_Faturas"]
         lg["LOG_DiferencasFatura"]
     end
 
@@ -220,6 +224,7 @@ flowchart LR
     mm -- "euro = 1" --> tcam
 
     ri --> tfv
+    ri -. "moeda desconhecida ou linha sem IVA" .-> efa
     rl --> tfv
     mc -- "cliente do grupo" --> tfv
     mm -- "código ISO" --> tfv
@@ -227,7 +232,7 @@ flowchart LR
     ri -. "correções P1, P2 e P3" .-> lg
     rl -.-> lg
 
-    ctl -. "marca d'água de cada tabela" .-> EXT
+    ctl -. "data da última extração de cada tabela" .-> EXT
 ```
 
 ## 4. Data mart: MoreRhythm_DM
