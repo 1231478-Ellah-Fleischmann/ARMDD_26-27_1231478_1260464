@@ -29,8 +29,8 @@ Raphael Moragas (1260464)
 Porto, novembro de 2026
 Índice
 1. Introdução …………………………………………………………………………….
-1.1 Contexto e objetivo ………………………………………………………………….
-1.2 Desafio ………………………………………………………………………………
+1.1 Contexto e objetivos ………………………………………………………………….
+1.2 Desafios ………………………………………………………………………………
 1.3 Fonte dos dados …………………………………………………………………….
 1.4 Metodologia e ferramentas ………………………………………………………….
 1.5 Estrutura do relatório ……………………………………………………………….
@@ -63,6 +63,12 @@ Porto, novembro de 2026
 5.7 DimEmpregado ……………………………………………………………………
 5.8 DimMoeda …………………………………………………………………………
 5.9 Tipos de dados …………………………………………………………………
+6. Staging area …………………………………………………………………
+6.1 Visão geral …………………………………………………………………
+6.2 Tabelas persistentes …………………………………………………………………
+6.3 Extração …………………………………………………………………
+6.4 Transformação …………………………………………………………………
+6.5 Ficheiros externos …………………………………………………………………
 
  1. Introdução
 Este relatório é referente à primeira parte do trabalho prático da unidade curricular de Armazéns de Dados (ARMDD), do Mestrado em Engenharia Informática, no ano letivo 2026/2027. Neste projeto iremos desenvolver um Data Mart a partir dos dados das vendas (faturação) da More Rhythm, SA, uma empresa de distribuição e comercialização de instrumentos musicais com sede no Porto.
@@ -112,8 +118,10 @@ Figura 1 – Arquitetura do armazém de dados da More Rhythm
 
 2.1 Fontes de dados
 A fonte principal é a base de dados operacional MoreRhythm. Das suas 12 tabelas extraímos apenas as 9 das vendas (invoices, invoices_lines, customers, employees, products, families, categories, suplliers e zones). As compras e os movimentos de stock não nos interessam no momento, sendo outros processos de negócio e ficam fora deste âmbito.
+
 Como a base de dados não tem taxas de câmbio e o Euro tem de ser a moeda de uniformização, as taxas vêm do BCE (retiradas no dia 2 de Novembro de https://data.ecb.europa.eu/data/datasets/EXR/EXR.Q.GBP.EUR.SP00.A). Descarregamos a série diária da libra (EXR.D.GBP.EUR.SP00.A) para o ficheiro ECB Data EUR GBP.csv, que tem a data, a data por extenso e a taxa de conversão. Esta taxa indica quantas libras valem 1 euro, ou seja, o valor em euros é o valor em libras dividido pela taxa da data da fatura. O euro tem taxa 1 e não aparece no ficheiro. Como o BCE só publica taxas nos dias úteis, para os fins de semana e feriados usamos a taxa do último dia útil anterior, e as linhas sem valor (feriados até 2012) são ignoradas.
-A terceira fonte é o DimDate.csv, gerado uma única vez como nos exercícios das aulas. Além do dia, mês, trimestre, semestre e ano, tem a semana padrão do SQL Server e a semana ISO 8601 (com o ano ISO), a estação meteorológica, o quadrimestre e os indicadores de último dia do mês e de fim de semana. O intervalo cobre as datas de fatura e de pagamento e os anos futuros. Os ficheiros externos ficam na pasta Files do projeto (secção 2.6).
+
+Já a DimData não vem de nenhuma fonte: vai ser gerada uma única vez por um script SQL, diretamente no Data Mart. Além do dia, mês, trimestre, semestre e ano, tem a semana ISO 8601 (com o ano ISO), a estação meteorológica, o quadrimestre e os indicadores de último dia do mês e de fim de semana. O intervalo cobre as datas de fatura e de pagamento e os anos futuros. O ficheiro do BCE fica na pasta Files do projeto (secção 2.6).
 
 2.2 Staging area
 A staging area é a base de dados MoreRhythm_StagingArea, no mesmo servidor do Data Mart. Assim, o sistema operacional é lido uma única vez por execução e todo o tratamento é feito fora dele. Está organizada em duas camadas de dados e dois grupos de tabelas de apoio.
@@ -129,7 +137,7 @@ O Data Mart é a base de dados MoreRhythm_DataMart. Segue a metodologia de Kimba
 O Power BI liga-se apenas ao Data Mart e é onde são feitas as 20 análises multidimensionais, com drill down e roll up pelas hierarquias.
 
 2.5 Processo de ETL e carga incremental
-A carga é incremental, como pede o enunciado deste projeto. Em cada execução, o ETL lê na ETL_Control a marca d'água de cada tabela e extrai só os registos criados ou alterados depois dela. Como a data e a hora estão em colunas separadas, são juntadas num único valor, e usamos sempre a maior entre a criação e a alteração, porque 8 fornecedores e 8 produtos têm a alteração anterior à criação. As tabelas zones e categories não têm colunas de auditoria e, por isso, são extraídas por inteiro, tal como os ficheiros externos, dos quais só se inserem as datas novas.
+A carga é incremental, como pede o enunciado deste projeto. Em cada execução, o ETL lê na ETL_Control a marca d'água de cada tabela e extrai só os registos criados ou alterados depois dela. Como a data e a hora estão em colunas separadas, são juntadas num único valor, e usamos sempre a maior entre a criação e a alteração, porque 8 fornecedores e 8 produtos têm a alteração anterior à criação. As tabelas zones e categories não têm colunas de auditoria e, por isso, são extraídas por inteiro, tal como o ficheiro do BCE, do qual só se inserem as datas novas.
 
 Nas faturas, o cliente, o empregado, as datas, a moeda e o frete estão no cabeçalho, mas o grão é a linha. Logo, extraímos as linhas cuja própria alteração ou a do cabeçalho seja posterior à marca d'água, e se o cabeçalho mudar todas as suas linhas são reprocessadas. Isto é o caso normal: 36 das 37 faturas foram alteradas depois de criadas, até 334 dias depois. Também é preciso propagar as alterações dos atributos desnormalizados, ou seja, uma alteração numa família, categoria, zona ou no nome de um chefe obriga a reprocessar os produtos, clientes, fornecedores ou empregados afetados.
 
@@ -161,7 +169,7 @@ Tabela 2 – Parâmetros do projeto SSIS
 
 
 2.7 Repositório e organização do projeto
-Tudo fica no repositório GitHub ARMDD_26-27_1231478_1260464. A pasta do projeto (PackagePath) tem as pastas Files (ficheiros externos), SQL Scripts (criação das tabelas), MoreRhythm ETL (projeto SSIS) e Docs (relatórios, profiling e registo de decisões).
+Tudo fica no repositório GitHub ARMDD_26-27_1231478_1260464. A pasta do projeto (PackagePath) tem as pastas Files (ficheiro do BCE), SQL Scripts (criação das tabelas), MoreRhythm ETL (projeto SSIS) e Docs (relatórios, profiling e registo de decisões).
 
 3. Fonte de dados e data profiling
 Antes de desenhar o modelo, fizemos o data profiling da amostra. Para cada informação que nos pareceu importante ou estranha, escrevemos uma hipótese e fizemos o teste com uma query SQL. A amostra é pequena, mas representa um volume de dados muito maior, de acordo com o que o professor indicou. Por isso, o objetivo foi perceber que tipos de problemas existem e o que o ETL vai ter de verificar. As conclusões são da amostra, mas o ETL vai aplicar as mesmas regras a qualquer volume de dados.
@@ -194,7 +202,7 @@ As três situações vão ficar registadas na tabela LOG_InvoiceCorrection, com 
 
 Nos clientes existem 3 pares de duplicados (P4). Os clientes 10 e 18 têm o mesmo NIF. Os pares 5/26 e 8/22 têm o mesmo código postal e o NIF só difere em dois dígitos seguidos trocados. A regra de deteção vai ser exatamente esta e, na amostra, devolve só estes 3 pares. Só são comparados NIF válidos, com 9 dígitos e diferentes de 000000000, para que clientes sem NIF não sejam juntados por engano. Em cada par, o cliente fica com o menor número e com os dados do registo alterado mais recentemente.
 
-Os 3 clientes internos da empresa ( "MaisRitmo (interno)", "MaisRitmo - Filial Lisboa (interno)" e "MaisRitmo - Filial Porto (interno)", são todos do tipo "Interno" no cliente final) não são clientes reais e vão para a tabela de erros. Já o cliente "Vendas a Dinheiro" vai ser carregado, apesar de não ter NIF nem morada. Ele representa as vendas a clientes não identificados, que são vendas reais, e se fosse rejeitado as vendas a dinheiro futuras ficariam sem cliente. A cidade, a localidade, a zona e o país deste cliente ficam com "Desconhecido". Os 2 fornecedores técnicos ("Compras a Dinheiro" e "MaisRitmo (interno)") também vão para a tabela de erros. Nenhum destes clientes e fornecedores tem vendas na amostra.
+Os 3 clientes internos da empresa ("MaisRitmo (interno)", "MaisRitmo - Filial Lisboa (interno)" e "MaisRitmo - Filial Porto (interno)", todos do tipo "Interno") não são clientes reais e vão para a tabela de erros. Já o cliente "Vendas a Dinheiro" vai ser carregado, apesar de não ter NIF válido nem morada. Ele representa as vendas a clientes não identificados, que são vendas reais, e se fosse rejeitado as vendas a dinheiro futuras ficariam sem cliente. A cidade, a localidade, a zona e o país deste cliente ficam com "Desconhecido". Os 2 fornecedores técnicos ("Compras a Dinheiro" e "MaisRitmo (interno)") também vão para a tabela de erros. Nenhum destes clientes e fornecedores tem vendas na amostra.
 
 A coluna clity não guarda a cidade, mas sim bairros e lugares, às vezes com grafias diferentes. Por exemplo, em Bragança aparecem 3 valores diferentes na clity. A cidade real está no zip_code. Por isso, a cidade vai ser a localidade postal do zip_code e a clity vai ficar como localidade. Há duas exceções, porque as moradas estrangeiras têm outro formato: o cliente 21 fica com "Alcobendas" e o fornecedor 10 fica com "Desconhecido". As zonas que não batem certo com o código postal (cliente 11 e fornecedores 5, 10 e 14) são tratadas no capítulo 7.
 
@@ -210,7 +218,7 @@ Os fornecedores 8 e 14 têm o mesmo NIF, mas nome, morada e zona diferentes, o q
 Por último, como as faturas estão só em 5 datas, não há nenhuma fatura na 6.ª semana do ano nem ao fim de semana, e por isso as análises 6 e 10 dão vazio na amostra. As famílias Amplificadores e Teclados também não têm produtos. Nestes casos, uma consulta vazia é o resultado correto.
 
 4. Análise dimensional
-O desenho do modelo segue os quatro passos da metodologia de Kimball: escolher o processo de negócio, definir o grão (que vai representar cada linha da nossa tabela de factos), identificar as dimensões e os factos. As decisões, com as opções que consideramos e os prós e contras de cada.
+O desenho do modelo segue os quatro passos da metodologia de Kimball: escolher o processo de negócio, definir o grão (que vai representar cada linha da nossa tabela de factos), identificar as dimensões e os factos. As decisões, com as opções que considerámos e os prós e contras de cada uma, estão registadas no repositório (Parte_1/decisoes.md).
 
 4.1 Processo de negócio
 O processo modelado é a venda (faturação) aos clientes da loja, que está nas tabelas invoices e invoices_lines. As compras e os movimentos de stock são outros processos de negócio. No futuro, podem ter os seus próprios data marts, ligados a este através de dimensões partilhadas.
@@ -243,7 +251,7 @@ O modelo é um esquema em estrela, como já dito anteriormente, com a FactVendas
 
 Figura 2 - Esquema em estrela do Data Mart
 
-Cada dimensão tem uma chave substituta, ou seja, um número gerado automaticamente pelo Data Mart (int IDENTITY), independente do código da fonte. A exceção é a DimData, cuja chave é a própria data no formato AAAA-MM-DD (por exemplo, 20250131). Cada dimensão guarda também o código da fonte (que é a chave natural), que o ETL usa para encontrar a linha certa da dimensão, e tem um registo "Desconhecido" com a chave -1, que é o padrão na industria.
+Cada dimensão tem uma chave substituta, ou seja, um número gerado automaticamente pelo Data Mart (int IDENTITY), independente do código da fonte. A exceção é a DimData, cuja chave é a própria data no formato AAAAMMDD (por exemplo, 20250131). Cada dimensão guarda também o código da fonte (que é a chave natural), que o ETL usa para encontrar a linha certa da dimensão, e tem um registo "Desconhecido" com a chave -1, que é o padrão na industria.
 
 As dimensões cliente, produto, fornecedor e empregado guardam o histórico das alterações em versões (SCD tipo 2). Para isso têm três colunas: DataInicio, DataFim e Atual. A primeira versão começa em 1900-01-01 e a versão atual termina em 9999-12-31. Cada venda fica ligada à versão que era válida na data da fatura. A forma como cada atributo é tratado estará escrito mais a frente. Os nomes das tabelas e das colunas estão em português, sem acentos, com cada palavra começada por maiúscula (por exemplo, DataFaturaKey).
 
@@ -265,7 +273,7 @@ Quantidade      numeric(14,4)   Não     Quantidade vendida      invoices_lines.
 PrecoUnitario   numeric(19,6)   Não     Preço unitário na moeda original (não aditivo)  invoices_lines.unit_price, sem o sinal negativo (P1)
 ValorProdutos   numeric(19,6)   Não     Valor dos produtos sem IVA e sem frete  invoices_lines.line_total
 ValorIVA        numeric(19,6)   Não     IVA da linha    invoices_lines.line_vat
-ValorFrete      numeric(19,6)   Não     Frete repartido pela linha      (total_for_vat - products_total) x line_total / soma do line_total da fatura. A última linha de cada fatura fica com o resto do arredondamento
+ValorFrete      numeric(19,6)   Não     Frete repartido pela linha      (total_for_vat - products_total) x line_total / soma do line_total da fatura
 ValorSemIVA     numeric(19,6)   Não     Valor sem IVA, com frete        ValorProdutos + ValorFrete
 ValorComIVA     numeric(19,6)   Não     Valor com IVA, com frete        ValorProdutos + ValorFrete + ValorIVA
 PrecoUnitarioEUR        numeric(19,6)   Não     Preço unitário em euros PrecoUnitario / TaxaCambio
@@ -276,7 +284,7 @@ ValorSemIVAEUR  numeric(19,6)   Não     Valor sem IVA em euros  ValorSemIVA / T
 ValorComIVAEUR  numeric(19,6)   Não     Valor com IVA em euros  ValorComIVA / TaxaCambio
 TaxaCambio      numeric(12,6)   Não     Unidades da moeda por 1 euro, na data da fatura CSV do BCE; taxa do dia útil anterior quando não há cotação; 1 para o euro
 
-Além da chave primária, há um índice no NumeroFatura, usado para apagar e reinserir as linhas das faturas alteradas. Os valores mantêm as 6 casas decimais da fonte. Como o frete repartido pode ter mais casas decimais, a última linha de cada fatura fica com o resto do arredondamento, para que a soma do frete das linhas seja sempre igual ao frete da fatura.
+Além da chave primária, há um índice no NumeroFatura, usado para apagar e reinserir as linhas das faturas alteradas.
 
 5.3 DimData
 Gerada de 2020-01-01 a 2035-12-31 (Tabela 4). Na AnoEstacao, dezembro conta para o inverno do ano seguinte. As hierarquias são Ano -> Semestre -> Trimestre -> Mês -> Dia, Ano -> Quadrimestre -> Mês -> Dia, AnoSemanaISO -> SemanaISO -> Dia e AnoEstacao -> Estação -> Dia.
@@ -287,19 +295,19 @@ DataKey int     Chave primária, AAAAMMDD        Ano x 10000 + Mês x 100 + Dia
 Data    date    Data
 Dia     tinyint Dia do mês (1-31)
 DiaSemana       tinyint Dia da semana, 1 = segunda … 7 = domingo        ISO 8601, não depende da configuração do servidor
-NomeDiaSemana   varchar(15)     "Segunda-feira" … "Domingo"
+NomeDiaSemana   varchar(15)     "Segunda-feira" a "Domingo"
 FimDeSemana     bit     1 ao sábado e domingo   Análise 10
 UltimoDiaMes    bit     1 no último dia do mês  Data = EOMONTH(Data). Análise 5
 SemanaISO       tinyint Semana ISO 8601 (segunda a domingo; semana 1 contém 4 de janeiro)       DATEPART(ISO_WEEK, Data). Análise 6
 AnoSemanaISO    smallint        Ano a que pertence a semana ISO Ano da quinta-feira dessa semana
 Mes     tinyint Mês (1-12)
-NomeMes varchar(12)     "Janeiro" … "Dezembro"
+NomeMes varchar(12)     "Janeiro" a "Dezembro"
 Trimestre       tinyint 1-4     Análises 3, 9, 10
 Quadrimestre    tinyint 1-3 (jan-abr, mai-ago, set-dez) Análise 7
 Semestre        tinyint 1-2     Análise 1
 Ano     smallint        Ano civil
 Estacao varchar(12)     Inverno (dez-fev), Primavera (mar-mai), Verão (jun-ago), Outono (set-nov)       Meteorológica. Análise 8
-AnoEstacao      smallint        Ano da estação: dezembro conta para o i 15/12/2025 -> Inverno 2026, junto com jan e fev de 2026
+AnoEstacao      smallint        Ano da estação: dezembro conta para o inverno do ano seguinte	Por exemplo, 15/12/2025 -> Inverno 2026, junto com jan e fev de 2026
 
 5.4 DimCliente
 Uma linha por versão de cada cliente, já sem duplicados (Tabela 5). As -> Cidade -> Localidade -> Cliente, Tipo de cliente -> Cliente (análise7) e Segmento -> Cliente. A zona é o território comercial da fonte e não uma divisão geográfica (é o que achamos, sendo necessário verificar por exato), por isso a mesma cidade pode estar em zonas diferentes (Amadora está em Sul e em Centro).
@@ -336,9 +344,9 @@ Categoria	varchar(35)	Categoria	categories via products.category; "Desconhecido"
 TaxaIVA	numeric(2,0)	Taxa de IVA em % (23 = 23%)	products.vat_rate; nulo se em falta
 PrecoVendaTabela	numeric(19,6)	Preço de venda de tabela	products.current_sell_price / 1 000 000; opcional
 CustoTabela	numeric(19,6)	Último preço de custo	products.last_cost_price / 1 000 000; opcional
-DataInicio	date	Início de validade da versão	SCD 2
-DataFim	date	Fim de validade da versão	SCD 2
-Atual	bit	1 na versão atual	SCD 2
+DataInicio	date	Início de validade da versão	Histórico em versões (SCD tipo 2)
+DataFim	date	Fim de validade da versão	Histórico em versões (SCD tipo 2)
+Atual	bit	1 na versão atual	Histórico em versões (SCD tipo 2)
 
 
 5.6 DimFornecedor
@@ -350,15 +358,15 @@ FornecedorKey	int IDENTITY	Chave substituta	Gerada
 FornecedorID	bigint	Chave natural	suplliers.number
 Nome	varchar(55)	Nome	suplliers.name
 NIF	varchar(20)	NIF	suplliers.taxpayer_number
-CodigoPostal	varchar(10)	Código postal (só o código)	suplliers.zip_code
+CodigoPostal	varchar(12)	Código postal (só o código)	suplliers.zip_code; "Desconhecido" se em falta
 Cidade	varchar(45)	Localidade postal	Texto do zip_code depois do código; exceção para o fornecedor 10
 Localidade	varchar(43)	Bairro / lugar	suplliers.city
 Zona	varchar(50)	Zona (território comercial, ver nota na DimCliente)	zones.zone
-Pais	nvarchar(50)	País	Derivado da zona, de nationality e do código postal
+Pais	varchar(50)	País	Derivado da zona, de nationality e do código postal
 TipoFornecedor	varchar(20)	Material, Serviços	suplliers.type; opcional
-DataInicio	date	Início de validade da versão	SCD 2
-DataFim	date	Fim de validade da versão	SCD 2
-Atual	bit	1 na versão atual	SCD 2
+DataInicio	date	Início de validade da versão	Histórico em versões (SCD tipo 2)
+DataFim	date	Fim de validade da versão	Histórico em versões (SCD tipo 2)
+Atual	bit	1 na versão atual	Histórico em versões (SCD tipo 2)
 
 
 5.7 DimEmpregado
@@ -372,9 +380,9 @@ Nome	varchar(30)	Nome	employees.name
 Grupo	varchar(20)	Administrador, Vendedor, Administrativo	employees.group
 Departamento	varchar(20)	Administrativo, Armazenagem, Direcção	employees.departament
 Chefe	varchar(30)	Nome do chefe; "Sem chefe" nos 2 empregados sem chefe	employees.name do empregado indicado em employees.chief
-DataInicio	date	Início de validade da versão	SCD 2
-DataFim	date	Fim de validade da versão	SCD 2
-Atual	bit	1 na versão atual	SCD 2
+DataInicio	date	Início de validade da versão	Histórico em versões (SCD tipo 2)
+DataFim	date	Fim de validade da versão	Histórico em versões (SCD tipo 2)
+Atual	bit	1 na versão atual	Histórico em versões (SCD tipo 2)
 
 
 5.8 DimMoeda
@@ -384,9 +392,72 @@ Tabela 9 - Colunas da DimMoeda
 Coluna	Tipo	Descrição	Origem / regra
 MoedaKey	int IDENTITY	Chave substituta	Gerada
 CodigoISO	char(3)	Código ISO 4217 (chave natural)	invoices.currency normalizado (EURO -> EUR)
-Nome	nvarchar(50)	Euro, Libra esterlina, …	Tabela de moedas na staging
-Simbolo	nvarchar(5)	€, £, …	Tabela de moedas na staging
+Nome	varchar(50)	Euro, Libra esterlina, …	AUX_Currency
+Simbolo	varchar(5)	€, £, …	AUX_Currency
 
 
 5.9 Tipos de dados
-O ClienteID e o FornecedorID são bigint, porque na fonte são numeric(10,0), que vai até 9 999 999 999 e não cabe num int. O EmpregadoID cabe num int. As colunas char passam a varchar com o mesmo tamanho, porque ficam sem os espaços à direita, e o código postal passa a varchar(10), porque guarda só o código. O resto mantém o tipo da fonte.
+O ClienteID e o FornecedorID são bigint, porque na fonte são numeric(10,0), que vai até 9 999 999 999 e não cabe num int. O EmpregadoID cabe num int. As colunas char passam a varchar com o mesmo tamanho, porque ficam sem os espaços à direita, e o código postal passa a varchar(12), porque guarda só o código (até 8 caracteres) ou "Desconhecido" quando está em falta. O resto mantém o tipo da fonte.
+
+6. Staging area
+Este capítulo define as estruturas de dados da staging area: as tabelas de cada camada, as tabelas persistentes e os ficheiros externos. As regras de transformação e limpeza de cada coluna estão no capítulo 7.
+
+6.1 Visão geral
+A staging area é a base de dados MoreRhythm_StagingArea. Usa a mesma collation da fonte (Latin1_General_CI_AS), para não haver conflitos quando se comparam textos das duas bases de dados. As tabelas estão organizadas em três grupos, identificados pelo prefixo do nome (Tabela 10).
+
+Tabela 10 - Grupos de tabelas da staging area
+Grupo   Prefixo Conteúdo        Entre execuções
+Extração        RAW_    Cópia dos registos novos ou alterados da fonte, com os nomes e os tipos da fonte        Esvaziadas no início de cada execução
+Transformação   TR_     Dados limpos e transformados, com os nomes e os tipos do Data Mart      Esvaziadas no início de cada execução
+Controlo, auxiliares e erros    ETL_, AUX_, LOG_, ERR_  Marca d'água, mapeamento de clientes e moedas, taxas de câmbio, correções e registos rejeitados Persistentes
+
+Em cada execução, os dados da fonte e do CSV do BCE são copiados para as tabelas RAW_. Depois são limpos e transformados para as tabelas TR_ e, por fim, carregados no Data Mart. Durante a transformação, os registos rejeitados vão para as tabelas ERR_ e as correções aos valores das faturas ficam registadas na LOG_InvoiceCorrection.
+
+6.2 Tabelas persistentes
+Estas tabelas não são apagadas entre execuções (Tabela 11).
+
+Tabela 11 - Tabelas persistentes da staging area
+Tabela	Conteúdo
+ETL_Control	Uma linha por tabela da fonte com colunas de auditoria, com a maior data e hora de alteração já extraída (marca d'água). Começa em 0001-01-01, por isso a primeira execução extrai tudo. A estrutura está na Tabela 1 (secção 2.5)
+AUX_CustomerMap	Todos os clientes já vistos: número do cliente na fonte (SourceNumber), número do grupo de duplicados (CustomerID, que corresponde ao ClienteID do Data Mart), NIF (TaxpayerNumber) e código postal (ZipCode). O NIF e o código postal são usados na regra de deteção de duplicados
+AUX_Currency	Moeda como vem da fonte (SourceCurrency), código ISO (ISOCode), nome (Name) e símbolo (Symbol). Tem o euro ("EURO" -> "EUR") e a libra ("LIBRA" -> "GBP"), para a expansão para o Reino Unido. O valor "LIBRA" é assumido, porque ainda não há vendas em libras
+AUX_ExchangeRate	Taxa de câmbio (Rate) de cada moeda (ISOCode) para todos os dias do calendário (Date), com o euro a 1. Em cada execução só se acrescentam as datas novas do CSV do BCE
+LOG_InvoiceCorrection	Uma linha por correção feita aos valores das faturas: tipo de correção (CorrectionType: sinal trocado, P1; total dos produtos, P2; frete, P3), número da fatura, linha da fatura (só no P1), campo corrigido, valor original, valor usado e data da carga
+ERR_Customers	Clientes rejeitados (os clientes internos): colunas da fonte, motivo (Reason) e data da carga (LoadDate)
+ERR_Suppliers	Fornecedores rejeitados (os fornecedores técnicos): colunas da fonte, motivo e data da carga
+ERR_Invoices	Faturas rejeitadas por inteiro (moeda sem correspondência na AUX_Currency ou linha sem IVA): número, data, cliente e moeda da fatura, motivo e data da carga
+
+6.3 Extração
+Há uma tabela RAW_ por tabela da fonte, só com as colunas usadas e as colunas de auditoria. Os nomes e os tipos são os da fonte, para a cópia ser direta. Um registo é extraído quando a sua data de alteração (a maior entre a criação e a alteração, secção 2.5) é posterior à marca d'água da tabela (Tabela 12).
+
+Tabela 12 - Tabelas de extração
+Tabela	Colunas extraídas	Regra de extração
+RAW_customers	number, name, taxpayer_number, clity, zip_code, zone, type, segment + auditoria	Cliente alterado depois da marca d'água. Os contactos, o BBAN e o seller ficam de fora
+RAW_suplliers	number, name, taxpayer_number, city, zip_code, zone, type, nationality + auditoria	Fornecedor alterado depois da marca d'água
+RAW_employees	number, name, group, departament, chief, chief_name + auditoria	Empregado alterado depois da marca d'água. O chief_name é o nome do chefe, obtido juntando a tabela employees com ela própria
+RAW_products	reference, designation, family, category, classification, vat_rate, current_sell_price, last_cost_price + auditoria	Produto alterado, ou família do produto alterada, depois da marca d'água
+RAW_families	reference, name, classification + auditoria	Tabela completa
+RAW_categories	Code, Category	Tabela completa (não tem colunas de auditoria)
+RAW_zones	code, zone	Tabela completa (não tem colunas de auditoria)
+RAW_invoices	invoice_stamp_id, invoice_date, payment_date, customer, employee, currency, products_total, shipping_cost, total_for_vat + auditoria	Fatura cujo cabeçalho ou alguma linha foi alterada depois da marca d'água
+RAW_invoices_lines	invoice_line_stamp_id, invoice_stamp_id, product, supplyer, quantity, unit_price, line_total, line_vat + auditoria	Todas as linhas das faturas extraídas. O supplyer vem do produto da linha
+RAW_ECB	Currency, DATE, TIME_PERIOD, Value	Ficheiro CSV completo. A coluna Currency é acrescentada (GBP). O Value fica em texto, porque até 2012 os feriados vêm sem valor
+
+O vat_value e o final_total não são extraídos, porque o IVA vem das linhas e os totais são calculados. O frete usado é total_for_vat - products_total (secção 3.3). O shipping_cost é extraído só para registar na LOG_InvoiceCorrection o valor original das faturas com o frete errado (P3).
+
+6.4 Transformação
+Há uma tabela TR_ por tabela do Data Mart, com os nomes e os tipos do capítulo 5 (Tabela 13).
+
+Tabela 13 - Tabelas de transformação
+Tabela	Uma linha por	Chave	Destino
+TR_Customers	cliente (grupo de duplicados)	ClienteID	DimCliente
+TR_Suppliers	fornecedor	FornecedorID	DimFornecedor
+TR_Employees	empregado	EmpregadoID	DimEmpregado
+TR_Products	produto	ProdutoID	DimProduto
+TR_FactSales	linha de fatura	LinhaID (invoice_line_stamp_id)	FactVendas
+
+As tabelas das dimensões têm também a coluna UltimaAlteracao, com a data de alteração do registo na fonte, que dá o início de validade de uma nova versão (SCD tipo 2). A TR_FactSales guarda as chaves naturais (o ClienteID já convertido pela AUX_CustomerMap, o ProdutoID, o FornecedorID, o EmpregadoID e a moeda) e todas as medidas já calculadas, na moeda original e em euros, com a taxa da AUX_ExchangeRate. As chaves substitutas só são procuradas na carga do Data Mart. A DimMoeda é carregada diretamente da AUX_Currency.
+
+6.5 Ficheiros externos
+O único ficheiro externo é o ECB Data EUR GBP.csv, que fica na pasta Files do projeto. Tem três colunas: DATE (a data, no formato AAAA-MM-DD), TIME PERIOD (a data por extenso, por exemplo "04 Jan 1999") e a taxa de referência, em libras por 1 euro. Tem uma linha por dia útil desde 04/01/1999, todos os valores entre aspas, o ponto como separador decimal e o fim de linha LF. É lido por inteiro em cada execução, mas só as datas novas são acrescentadas à AUX_ExchangeRate.
+A DimData não vem de nenhum ficheiro: vai ser gerada uma única vez por um script SQL, diretamente no Data Mart (secção 5.3).
