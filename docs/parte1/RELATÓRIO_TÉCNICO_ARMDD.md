@@ -160,4 +160,39 @@ Tabela 2 – Parâmetros do projeto SSIS
 2.7 Repositório e organização do projeto
 Tudo fica no repositório GitHub ARMDD_26-27_1231478_1260464. A pasta do projeto (PackagePath) tem as pastas Files (ficheiros externos), SQL Scripts (criação das tabelas), MoreRhythm ETL (projeto SSIS) e Docs (relatórios, profiling e registo de decisões).
 
-Projeto realizado tendo em vista os trabalhos do ano passado e retrasado
+3. Fonte de dados e data profiling
+Antes de desenhar o modelo, fizemos o data profiling da amostra. Para cada informação que nos pareceu importante ou estranha, escrevemos uma hipótese e fizemos o teste com uma query SQL. A amostra é pequena, mas representa um volume de dados muito maior, de acordo com o que o professor indicou. Por isso, o objetivo foi perceber que tipos de problemas existem e o que o ETL vai ter de verificar. As conclusões são da amostra, mas o ETL vai aplicar as mesmas regras a qualquer volume de dados.
+
+3.1 Caracterização da fonte
+A base de dados está em SQL Server 2025. Usamos 9 das 12 tabelas: invoices (37 faturas), invoices_lines (93 linhas), customers (26 clientes), suplliers (14 fornecedores), employees (6 empregados), products (67 produtos), families (17 famílias), categories (11 categorias) e zones (5 zonas: Norte, Centro, Sul, Ilhas e Espanha). As faturas vão de 31/01/2025 até 01/05/2025, mas só têm 5 datas diferentes e nenhuma é ao fim de semana. Não há registos órfãos e nenhum produto aparece duas vezes na mesma fatura.
+
+Os valores monetários são numeric(19,6) e as quantidades numeric(14,4). A taxa de IVA é numeric(2,0) e está guardada como número inteiro (23 quer dizer 23%). Todos os produtos com taxa de IVA preenchida têm 23%, e esta taxa, estranhamente, também é usada nas vendas para Espanha. A data e a hora de criação e de alteração estão em colunas separadas. O enunciado diz que todas as tabelas guardam estas datas, mas as tabelas zones e categories não as têm.
+
+Os identificadores das faturas e das linhas (stamps) são char(25) e vêm com espaços à direita. A parte do invoice_stamp_id antes da vírgula repete-se (19 prefixos para 37 faturas), por isso usamos sempre o identificador completo. Alguns nomes de tabelas e colunas têm erros ortográficos (suplliers, clity, supplyer e departament). Mantemos estes nomes tal como estão na fonte.
+
+3.2 Regras de negócio inferidas
+Ao comparar as linhas com o cabeçalho das faturas, chegámos a seis regras:
+• R1: não há descontos, ou seja, line_total = quantity x unit_price. Acontece em 89 das 93 linhas que nos foram disponibilizadas. Nas outras 4, a quantidade ou o preço têm o sinal trocado (secção 3.3).
+• R2: o IVA da linha é line_vat = line_total x vat_rate / 100. Acontece em todas as linhas.
+• R3: o IVA da fatura é a soma do IVA das linhas. Acontece em todas as faturas, o que quer dizer que o frete não paga IVA.
+• R4: final_total = total_for_vat + vat_value. Novamente, acontece também em todas as faturas.
+• R5: total_for_vat = products_total + shipping_cost.
+• R6: o frete é 2,5% do total dos produtos do cabeçalho, ou seja, shipping_cost = products_total x 0,025.
+
+A R5 e a R6 acontecem em 35 das 37 faturas, e as 2 exceções são as mesmas faturas nas duas regras (secção 3.3). A R3 e a R6 não estão no enunciado e foram tiradas só dos dados.
+
+3.3 Problemas de qualidade e tratamento
+Seguimos a regra do enunciado: o que pode ser corrigido automaticamente é carregado no Data Mart, e o resto vai para as tabelas de erros.
+Nos valores das faturas encontrámos três problemas:
+• P1: em 4 linhas, a quantidade ou o preço estão negativos, mas o valor da linha e o IVA estão positivos. Nestes casos, vamos tirar o sinal negativo à quantidade ou ao preço, para ficarem coerentes com o line_total.
+• P2: em 2 faturas, o products_total do cabeçalho tem uma diferença de 5 euros em relação à soma das linhas. Isto acontece porque o cabeçalho foi calculado com o preço de tabela e as linhas com o preço realmente praticado. Como o IVA do cabeçalho bate certo com o das linhas, vamos usar as linhas como valor correto, e a diferença vai ficar registada na tabela LOG_InvoiceDifference.
+• P3: em outras 2 faturas, o shipping_cost tem mais 2,50 e mais 5,00 euros do que os 2,5%, mas o total_for_vat está certo. Por isso, o frete vai ser calculado como total_for_vat − products_total e depois dividido pelas linhas, na proporção do line_total de cada uma.
+Nos clientes existem 3 pares de duplicados (P4). Os clientes 10 e 18 têm o mesmo NIF. Os pares 5/26 e 8/22 têm o mesmo código postal e o NIF só difere em dois dígitos seguidos trocados. A regra de deteção vai ser exatamente esta e, na amostra, devolve só estes 3 pares. Em cada par, o cliente fica com o menor número e com os dados do registo alterado mais recentemente. Os 4 clientes técnicos (NIF 0, 00, 000000000 ou vazio) e os 2 fornecedores técnicos ("Compras a Dinheiro" e "MaisRitmo (interno)") não são clientes nem fornecedores reais e não têm vendas, por isso vão para as tabelas de erros.outro formato: o cliente 21 fica com "Alcobendas" e o fornecedor 10 fica com "Desconhecido". As zonas que não batem certo com o código postal (cliente 11 e fornecedores 5, 10 e 14) são tratadas no capítulo 7.
+Nos produtos, 12 não têm família, categoria, fornecedor, designação e/ou IVA. Nenhum deles foi vendido, e os campos em falta vão ficar com "Desconhecido". Os preços de tabela estão multiplicados por 1 000 000, por isso vão ser divididos por esse valor. A classificação das famílias está vazia em 8 das 17 famílias, por isso vai ser tirada da coluna products.classification, que tem um só valor por família. Além disso, 4 famílias têm como nome uma descrição longa (por exemplo, "Instrumentos cujo elemento vibratório é o ar"). Por isso, a dimensão vai ter a Familia, com o nome curto, e a DescricaoFamilia, com o nome completo.
+A moeda vem escrita como "EURO" e vai ser convertida para o código "EUR".
+Há 10 faturas com data anterior à data de criação do cliente. Como a dimensão vai guardar o histórico das alterações de cada cliente em versões, a primeira versão de cada cliente vai começar em 1900-01-01, para estas faturas encontrarem sempre um cliente válido.
+Por fim, vamos tirar os espaços à direita das colunas de texto e considerar como "em falta" os valores NULL, só com espaços ou vazios.
+
+3.4 Casos analisados e não tratados como problemas
+Os fornecedores 8 e 14 têm o mesmo NIF, mas nome, morada e zona diferentes, o que indica uma filial. Por isso, vão ficar como dois fornecedores separados. Os emails inválidos e a coluna seller, que não tem significado documentado, não entram no modelo. A venda a um funcionário (1 fatura) é uma venda real e entra no Data Mart. As 10 linhas com preço diferente do preço de tabela também são normais, e são elas que explicam o problema P2.
+Por último, como as faturas estão só em 5 datas, não há nenhuma fatura na 6.ª semana do ano nem ao fim de semana, e por isso as análises 6 e 10 dão vazio na amostra. As famílias Amplificadores e Teclados também não têm produtos. Nestes casos, uma consulta vazia é o resultado correto.
